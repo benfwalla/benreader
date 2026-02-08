@@ -73,7 +73,12 @@ export const upsertPosts = internalMutation({
         .withIndex("by_guid", (q) => q.eq("guid", post.guid))
         .first();
 
-      if (!existing) {
+      if (existing) {
+        // Update paywall status if it changed
+        if (existing.isPaywalled !== post.isPaywalled) {
+          await ctx.db.patch(existing._id, { isPaywalled: post.isPaywalled });
+        }
+      } else {
         await ctx.db.insert("brPosts", {
           feedId: args.feedId,
           title: post.title,

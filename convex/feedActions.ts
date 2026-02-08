@@ -77,7 +77,11 @@ export const refreshFeed = action({
       let items = channel.item || channel.entry || [];
       if (!Array.isArray(items)) items = [items];
 
-      const isSubstack = feed.xmlUrl.includes("substack.com");
+      // Detect Substack: either substack.com domain or RSS content hints
+      const xmlLower = xml.toLowerCase();
+      const isSubstack = feed.xmlUrl.includes("substack.com") || 
+        xmlLower.includes("substack") ||
+        xmlLower.includes("substackcdn.com");
       const posts = [];
 
       for (const item of items.slice(0, 50)) {
@@ -142,8 +146,9 @@ export const refreshFeed = action({
               isPaywalled =
                 html.includes('class="paywall"') ||
                 html.includes('class="paywall-bar"') ||
-                html.includes("Subscribe to continue reading") ||
-                html.includes("This post is for paid subscribers");
+                html.includes('"isAccessibleForFree":false') ||
+                html.includes("This post is for paid subscribers") ||
+                html.includes("Subscribe to continue reading");
             }
           } catch {
             // ignore

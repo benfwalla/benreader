@@ -4,7 +4,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useState, useCallback, useRef } from "react";
-import { House, Star, SquaresFour, List, ArrowsClockwise } from "@phosphor-icons/react";
+import { House, Star, SquaresFour, List, ArrowsClockwise, LockSimple } from "@phosphor-icons/react";
 
 type Filter =
   | { type: "all" }
@@ -332,7 +332,9 @@ function PostList({ filter }: { filter: Filter }) {
                       {formatDate(post.publishedAt)}
                     </span>
                     {post.isPaywalled && (
-                      <span title="Paywalled" className="text-sm">🔒</span>
+                      <span title="Paywalled" style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                        <LockSimple size={14} weight="fill" />
+                      </span>
                     )}
                   </div>
 
