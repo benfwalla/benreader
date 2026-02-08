@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#C47B3B"/>
+  <g transform="translate(256,256)">
+    <!-- Open book -->
+    <path d="M-120,-40 Q-120,-80 -60,-80 Q0,-80 0,-50 Q0,-80 60,-80 Q120,-80 120,-40 L120,60 Q120,80 60,80 Q0,80 0,60 Q0,80 -60,80 Q-120,80 -120,60 Z" fill="#FDFBF7" stroke="#2C2418" stroke-width="6"/>
+    <line x1="0" y1="-50" x2="0" y2="60" stroke="#2C2418" stroke-width="4"/>
+    <!-- RSS dot -->
+    <circle cx="80" cy="-100" r="16" fill="#F5F0E8"/>
+    <!-- RSS arcs -->
+    <path d="M52,-128 Q52,-160 84,-160" fill="none" stroke="#F5F0E8" stroke-width="8" stroke-linecap="round"/>
+    <path d="M36,-144 Q36,-192 84,-192" fill="none" stroke="#F5F0E8" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
