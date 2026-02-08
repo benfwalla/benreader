@@ -33,6 +33,15 @@ export const add = mutation({
   },
 });
 
+export const updateImage = mutation({
+  args: { feedId: v.id("brFeeds"), imageUrl: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.feedId, { imageUrl: args.imageUrl });
+    return null;
+  },
+});
+
 export const remove = mutation({
   args: { feedId: v.id("brFeeds") },
   returns: v.null(),

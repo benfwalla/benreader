@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { House, Star, SquaresFour, List, ArrowsClockwise, LockSimple } from "@phosphor-icons/react";
 
 type Filter =
@@ -13,11 +13,26 @@ type Filter =
   | { type: "feed"; feedId: Id<"brFeeds"> };
 
 export default function Home() {
-  const [filter, setFilter] = useState<Filter>({ type: "all" });
+  const [filter, setFilter] = useState<Filter | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const folders = useQuery(api.folders.list, {});
+
+  // Default to "Blogs" folder
+  useEffect(() => {
+    if (filter === null && folders) {
+      const blogsFolder = folders.find((f) => f.name.toLowerCase() === "blogs");
+      if (blogsFolder) {
+        setFilter({ type: "folder", folderId: blogsFolder._id });
+      } else {
+        setFilter({ type: "all" });
+      }
+    }
+  }, [folders, filter]);
+
+  const activeFilter = filter ?? { type: "all" } as Filter;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -36,7 +51,7 @@ export default function Home() {
         }`}
       >
         <Sidebar
-          filter={filter}
+          filter={activeFilter}
           setFilter={(f) => {
             setFilter(f);
             setSidebarOpen(false);
@@ -51,25 +66,25 @@ export default function Home() {
       <main className="flex-1 flex flex-col min-w-0">
         <Header
           onMenuClick={() => setSidebarOpen(true)}
-          filter={filter}
+          filter={activeFilter}
         />
-        <PostList filter={filter} />
+        <PostList filter={activeFilter} />
       </main>
 
       {/* Bottom nav on mobile */}
       <nav className="fixed bottom-0 left-0 right-0 bottom-nav lg:hidden z-20">
         <button
           onClick={() => setFilter({ type: "all" })}
-          className={`bottom-nav-item ${filter.type === "all" ? "active" : ""}`}
+          className={`bottom-nav-item ${activeFilter.type === "all" ? "active" : ""}`}
         >
-          <House size={22} weight={filter.type === "all" ? "fill" : "regular"} />
+          <House size={22} weight={activeFilter.type === "all" ? "fill" : "regular"} />
           All
         </button>
         <button
           onClick={() => setFilter({ type: "starred" })}
-          className={`bottom-nav-item ${filter.type === "starred" ? "active" : ""}`}
+          className={`bottom-nav-item ${activeFilter.type === "starred" ? "active" : ""}`}
         >
-          <Star size={22} weight={filter.type === "starred" ? "fill" : "regular"} />
+          <Star size={22} weight={activeFilter.type === "starred" ? "fill" : "regular"} />
           Starred
         </button>
         <button
@@ -358,12 +373,12 @@ function PostList({ filter }: { filter: Filter }) {
                   )}
                 </div>
 
-                {post.imageUrl && (
+                {(post.imageUrl || post.feedImageUrl) && (
                   <div className="flex-shrink-0">
                     <img
-                      src={post.imageUrl}
+                      src={post.imageUrl || post.feedImageUrl}
                       alt=""
-                      className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 object-cover rounded-lg"
+                      className={`rounded-lg object-cover ${post.imageUrl ? "w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28" : "w-10 h-10 sm:w-12 sm:h-12"}`}
                       loading="lazy"
                     />
                   </div>

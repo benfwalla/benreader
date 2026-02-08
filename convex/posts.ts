@@ -24,6 +24,7 @@ export const list = query({
       guid: v.string(),
       author: v.optional(v.string()),
       feedTitle: v.string(),
+      feedImageUrl: v.optional(v.string()),
     })
   ),
   handler: async (ctx, args) => {
@@ -62,16 +63,16 @@ export const list = query({
     }
 
     // Attach feed titles
-    const feedCache = new Map<string, string>();
+    const feedCache = new Map<string, { title: string; imageUrl?: string }>();
     const result = [];
     for (const post of posts) {
-      let feedTitle = feedCache.get(post.feedId);
-      if (!feedTitle) {
+      let feedInfo = feedCache.get(post.feedId);
+      if (!feedInfo) {
         const feed = await ctx.db.get(post.feedId);
-        feedTitle = feed?.title ?? "Unknown";
-        feedCache.set(post.feedId, feedTitle);
+        feedInfo = { title: feed?.title ?? "Unknown", imageUrl: feed?.imageUrl };
+        feedCache.set(post.feedId, feedInfo);
       }
-      result.push({ ...post, feedTitle });
+      result.push({ ...post, feedTitle: feedInfo.title, feedImageUrl: feedInfo.imageUrl });
     }
 
     return result;

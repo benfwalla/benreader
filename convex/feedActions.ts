@@ -74,6 +74,20 @@ export const refreshFeed = action({
       const channel = parsed.rss?.channel || parsed.feed;
       if (!channel) return null;
 
+      // Extract feed image/logo
+      const feedImage =
+        channel.image?.url ||
+        channel["itunes:image"]?.["@_href"] ||
+        channel.logo ||
+        channel.icon ||
+        undefined;
+      if (feedImage && !feed.imageUrl) {
+        await ctx.runMutation(api.feeds.updateImage, {
+          feedId: args.feedId,
+          imageUrl: String(feedImage),
+        });
+      }
+
       let items = channel.item || channel.entry || [];
       if (!Array.isArray(items)) items = [items];
 
