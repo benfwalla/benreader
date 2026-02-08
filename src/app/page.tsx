@@ -30,7 +30,7 @@ export default function Home() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-40 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col transition-transform duration-200 ${
+        className={`fixed lg:static inset-y-0 left-0 z-40 w-72 sidebar flex flex-col transition-transform duration-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -56,32 +56,27 @@ export default function Home() {
       </main>
 
       {/* Bottom nav on mobile */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[var(--bg-card)] border-t border-[var(--border)] flex lg:hidden z-20 pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed bottom-0 left-0 right-0 bottom-nav flex lg:hidden z-20">
         <button
           onClick={() => setFilter({ type: "all" })}
-          className={`flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 ${
-            filter.type === "all"
-              ? "text-[var(--accent)]"
-              : "text-[var(--text-muted)]"
-          }`}
+          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1"
+          style={{ color: filter.type === "all" ? "var(--accent)" : "var(--text-muted)" }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
           All
         </button>
         <button
           onClick={() => setFilter({ type: "starred" })}
-          className={`flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 ${
-            filter.type === "starred"
-              ? "text-[var(--accent)]"
-              : "text-[var(--text-muted)]"
-          }`}
+          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1"
+          style={{ color: filter.type === "starred" ? "var(--accent)" : "var(--text-muted)" }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill={filter.type === "starred" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           Starred
         </button>
         <button
           onClick={() => setSidebarOpen(true)}
-          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 text-[var(--text-muted)]"
+          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1"
+          style={{ color: "var(--text-muted)" }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
           Folders
@@ -117,7 +112,7 @@ function Sidebar({
 
   return (
     <>
-      <div className="p-5 border-b border-[var(--border)]">
+      <div className="p-5" style={{ borderBottom: "1px solid var(--border)" }}>
         <h1
           className="text-xl font-bold tracking-tight"
           style={{ fontFamily: "var(--font-serif)" }}
@@ -141,7 +136,7 @@ function Sidebar({
         />
 
         <div className="mt-4 mb-2 px-5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
             Folders
           </span>
         </div>
@@ -165,7 +160,7 @@ function Sidebar({
                 <button
                   key={feed._id}
                   onClick={() => setFilter({ type: "feed", feedId: feed._id })}
-                  className="w-full text-left pl-12 pr-5 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--border)]/50 truncate transition-colors"
+                  className="w-full text-left pl-12 pr-5 py-1.5 text-sm text-secondary truncate transition-colors"
                 >
                   {feed.title}
                 </button>
@@ -174,24 +169,18 @@ function Sidebar({
         ))}
       </div>
 
-      <div className="p-3 border-t border-[var(--border)] flex flex-col gap-1">
+      <div className="p-3 flex flex-col gap-1" style={{ borderTop: "1px solid var(--border)" }}>
         <button
           onClick={onAddFeed}
-          className="w-full py-2 px-3 text-sm rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent-hover)] transition-colors"
+          className="btn-accent w-full py-2 px-3 text-sm"
         >
           + Add Feed
         </button>
         <div className="flex gap-1">
-          <button
-            onClick={onImport}
-            className="flex-1 py-2 text-xs rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
-          >
+          <button onClick={onImport} className="btn-outline flex-1 py-2">
             Import OPML
           </button>
-          <button
-            onClick={onSettings}
-            className="flex-1 py-2 text-xs rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
-          >
+          <button onClick={onSettings} className="btn-outline flex-1 py-2">
             ⚙ Settings
           </button>
         </div>
@@ -217,15 +206,13 @@ function SidebarItem({
     <button
       onClick={onClick}
       className={`w-full text-left px-5 py-2.5 flex items-center gap-3 text-sm transition-colors ${
-        active
-          ? "bg-[var(--accent)]/10 text-[var(--accent)] font-medium"
-          : "text-[var(--text-primary)] hover:bg-[var(--border)]/50"
+        active ? "bg-accent-light text-accent font-medium" : ""
       }`}
     >
       <span className="text-base">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
       {count !== undefined && (
-        <span className="text-xs text-[var(--text-muted)]">{count}</span>
+        <span className="text-xs text-muted">{count}</span>
       )}
     </button>
   );
@@ -269,16 +256,16 @@ function Header({
           : "Feed";
 
   return (
-    <header className="sticky top-0 z-10 bg-[var(--bg-primary)]/90 backdrop-blur-md border-b border-[var(--border)] px-4 lg:px-6 py-3 flex items-center gap-3">
+    <header className="header-bar">
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 -ml-2 text-[var(--text-secondary)]"
+        className="lg:hidden p-2 -ml-2 text-secondary"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
 
       <h2
-        className="text-lg font-semibold flex-1"
+        className="text-lg font-semibold flex-1 min-w-0"
         style={{ fontFamily: "var(--font-serif)" }}
       >
         {title}
@@ -286,7 +273,7 @@ function Header({
 
       <button
         onClick={handleMarkAllRead}
-        className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
+        className="btn-outline"
       >
         Mark all read
       </button>
@@ -294,9 +281,7 @@ function Header({
       <button
         onClick={handleRefresh}
         disabled={refreshing}
-        className={`px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 ${
-          refreshing ? "animate-pulse" : ""
-        }`}
+        className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}
       >
         {refreshing ? "Refreshing…" : "↻ Refresh"}
       </button>
@@ -317,7 +302,7 @@ function PostList({ filter }: { filter: Filter }) {
 
   if (!posts) {
     return (
-      <div className="flex-1 flex items-center justify-center text-[var(--text-muted)]">
+      <div className="flex-1 flex items-center justify-center text-muted">
         <div className="animate-pulse">Loading…</div>
       </div>
     );
@@ -325,7 +310,7 @@ function PostList({ filter }: { filter: Filter }) {
 
   if (posts.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-muted)] gap-2 px-4">
+      <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4">
         <span className="text-4xl">📭</span>
         <p className="text-sm">No posts yet. Add some feeds or hit refresh!</p>
       </div>
@@ -334,7 +319,7 @@ function PostList({ filter }: { filter: Filter }) {
 
   return (
     <div className="flex-1 overflow-y-auto pb-20 lg:pb-4">
-      <div className="max-w-3xl mx-auto px-4 lg:px-6 py-4 space-y-3">
+      <div className="feed-list">
         {posts.map((post, i) => (
           <article
             key={post._id}
@@ -342,9 +327,7 @@ function PostList({ filter }: { filter: Filter }) {
             style={{ animationDelay: `${i * 30}ms` }}
           >
             <div
-              className={`bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 lg:p-5 hover:shadow-md transition-all cursor-pointer group ${
-                post.isRead ? "opacity-60" : ""
-              }`}
+              className={`post-card group ${post.isRead ? "read" : ""}`}
               onClick={() => {
                 if (!post.isRead) markRead({ postId: post._id });
                 window.open(post.url, "_blank");
@@ -353,11 +336,11 @@ function PostList({ filter }: { filter: Filter }) {
               <div className="flex gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-xs font-medium text-[var(--accent)] truncate">
+                    <span className="text-xs font-medium text-accent truncate">
                       {post.feedTitle}
                     </span>
-                    <span className="text-xs text-[var(--text-muted)]">·</span>
-                    <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                    <span className="text-xs text-muted">·</span>
+                    <span className="text-xs text-muted whitespace-nowrap">
                       {formatDate(post.publishedAt)}
                     </span>
                     {post.isPaywalled && (
@@ -366,20 +349,20 @@ function PostList({ filter }: { filter: Filter }) {
                   </div>
 
                   <h3
-                    className="font-semibold text-base lg:text-lg leading-snug mb-2 group-hover:text-[var(--accent)] transition-colors line-clamp-2"
+                    className="font-semibold text-base lg:text-lg leading-snug mb-2 group-hover:text-accent transition-colors line-clamp-2"
                     style={{ fontFamily: "var(--font-serif)" }}
                   >
                     {decodeEntities(post.title)}
                   </h3>
 
                   {post.content && (
-                    <p className="text-sm text-[var(--text-secondary)] leading-relaxed line-clamp-2">
+                    <p className="text-sm text-secondary leading-relaxed line-clamp-2">
                       {decodeEntities(post.content.slice(0, 150))}
                     </p>
                   )}
 
                   {post.author && post.author !== "[object Object]" && (
-                    <p className="text-xs text-[var(--text-muted)] mt-2">
+                    <p className="text-xs text-muted mt-2">
                       by {post.author}
                     </p>
                   )}
@@ -397,17 +380,14 @@ function PostList({ filter }: { filter: Filter }) {
                 )}
               </div>
 
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--border)]/50">
+              <div className="flex items-center justify-between card-divider">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleStar({ postId: post._id });
                   }}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    post.isStarred
-                      ? "text-[var(--star-color)]"
-                      : "text-[var(--text-muted)] hover:text-[var(--star-color)]"
-                  }`}
+                  className="p-1.5 rounded-lg transition-colors"
+                  style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
                 >
                   <svg
                     width="18"
@@ -422,7 +402,7 @@ function PostList({ filter }: { filter: Filter }) {
                 </button>
 
                 {!post.isRead && (
-                  <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--accent)" }} />
                 )}
               </div>
             </div>
@@ -468,7 +448,7 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/feed.xml"
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            className="form-input"
             required
           />
         </div>
@@ -477,7 +457,7 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
           <select
             value={folderId}
             onChange={(e) => setFolderId(e.target.value as Id<"brFolders">)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            className="form-input"
             required
           >
             <option value="">Select folder…</option>
@@ -490,7 +470,7 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
         </div>
         <button
           type="submit"
-          className="w-full py-2 rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent-hover)] transition-colors"
+          className="btn-accent w-full py-2"
         >
           Add Feed
         </button>
@@ -531,7 +511,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
         <button
           onClick={handleImport}
           disabled={importing}
-          className="w-full py-2 rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
+          className="btn-accent w-full py-2"
         >
           {importing ? "Importing…" : "Import"}
         </button>
@@ -570,11 +550,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               <button
                 key={c.value}
                 onClick={() => applyBg(c.value)}
-                className={`p-3 rounded-lg border-2 transition-colors text-xs font-medium ${
-                  (bgColor ?? "#F5F0E8") === c.value
-                    ? "border-[var(--accent)]"
-                    : "border-[var(--border)]"
-                }`}
+                className={`color-swatch ${(bgColor ?? "#F5F0E8") === c.value ? "active" : ""}`}
                 style={{ backgroundColor: c.value, color: c.value === "#1A1A2E" || c.value === "#2C2418" ? "#fff" : "#2C2418" }}
               >
                 {c.name}
@@ -599,7 +575,7 @@ function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-6 w-full max-w-md animate-fade-in shadow-xl">
+      <div className="relative modal-card animate-fade-in">
         <div className="flex items-center justify-between mb-4">
           <h3
             className="text-lg font-semibold"
@@ -609,7 +585,7 @@ function Modal({
           </h3>
           <button
             onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            className="text-muted transition-colors"
           >
             ✕
           </button>
