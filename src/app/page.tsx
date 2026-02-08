@@ -56,7 +56,7 @@ export default function Home() {
       </main>
 
       {/* Bottom nav on mobile */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[var(--bg-card)] border-t border-[var(--border)] flex lg:hidden z-20">
+      <nav className="fixed bottom-0 left-0 right-0 bg-[var(--bg-card)] border-t border-[var(--border)] flex lg:hidden z-20 pb-[env(safe-area-inset-bottom)]">
         <button
           onClick={() => setFilter({ type: "all" })}
           className={`flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 ${
@@ -369,16 +369,16 @@ function PostList({ filter }: { filter: Filter }) {
                     className="font-semibold text-base lg:text-lg leading-snug mb-2 group-hover:text-[var(--accent)] transition-colors line-clamp-2"
                     style={{ fontFamily: "var(--font-serif)" }}
                   >
-                    {post.title}
+                    {decodeEntities(post.title)}
                   </h3>
 
                   {post.content && (
                     <p className="text-sm text-[var(--text-secondary)] leading-relaxed line-clamp-2">
-                      {post.content.slice(0, 150)}
+                      {decodeEntities(post.content.slice(0, 150))}
                     </p>
                   )}
 
-                  {post.author && (
+                  {post.author && post.author !== "[object Object]" && (
                     <p className="text-xs text-[var(--text-muted)] mt-2">
                       by {post.author}
                     </p>
@@ -386,11 +386,11 @@ function PostList({ filter }: { filter: Filter }) {
                 </div>
 
                 {post.imageUrl && (
-                  <div className="hidden sm:block flex-shrink-0">
+                  <div className="flex-shrink-0">
                     <img
                       src={post.imageUrl}
                       alt=""
-                      className="w-24 h-24 lg:w-28 lg:h-28 object-cover rounded-lg"
+                      className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 object-cover rounded-lg"
                       loading="lazy"
                     />
                   </div>
@@ -618,6 +618,18 @@ function Modal({
       </div>
     </div>
   );
+}
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
 }
 
 function formatDate(ts: number): string {
