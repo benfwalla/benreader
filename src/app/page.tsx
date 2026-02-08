@@ -4,6 +4,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useState, useCallback, useRef } from "react";
+import { House, Star, SquaresFour, List, ArrowsClockwise } from "@phosphor-icons/react";
 
 type Filter =
   | { type: "all" }
@@ -56,29 +57,26 @@ export default function Home() {
       </main>
 
       {/* Bottom nav on mobile */}
-      <nav className="fixed bottom-0 left-0 right-0 bottom-nav flex lg:hidden z-20">
+      <nav className="fixed bottom-0 left-0 right-0 bottom-nav lg:hidden z-20">
         <button
           onClick={() => setFilter({ type: "all" })}
-          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1"
-          style={{ color: filter.type === "all" ? "var(--accent)" : "var(--text-muted)" }}
+          className={`bottom-nav-item ${filter.type === "all" ? "active" : ""}`}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          <House size={22} weight={filter.type === "all" ? "fill" : "regular"} />
           All
         </button>
         <button
           onClick={() => setFilter({ type: "starred" })}
-          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1"
-          style={{ color: filter.type === "starred" ? "var(--accent)" : "var(--text-muted)" }}
+          className={`bottom-nav-item ${filter.type === "starred" ? "active" : ""}`}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill={filter.type === "starred" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <Star size={22} weight={filter.type === "starred" ? "fill" : "regular"} />
           Starred
         </button>
         <button
           onClick={() => setSidebarOpen(true)}
-          className="flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1"
-          style={{ color: "var(--text-muted)" }}
+          className="bottom-nav-item"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <SquaresFour size={22} />
           Folders
         </button>
       </nav>
@@ -247,9 +245,10 @@ function Header({
     <header className="header-bar">
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 -ml-2 text-secondary"
+        className="lg:hidden p-2 -ml-2"
+        style={{ color: "var(--text-secondary)" }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <List size={24} />
       </button>
 
       <h2
@@ -271,7 +270,8 @@ function Header({
         disabled={refreshing}
         className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}
       >
-        {refreshing ? "Refreshing…" : "↻ Refresh"}
+        <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} style={{ display: "inline", marginRight: 4 }} />
+        {refreshing ? "Refreshing…" : "Refresh"}
       </button>
     </header>
   );
