@@ -51,7 +51,7 @@ export const importOPML = action({
 });
 
 export const refreshFeed = action({
-  args: { feedId: v.id("feeds") },
+  args: { feedId: v.id("brFeeds") },
   returns: v.null(),
   handler: async (ctx, args) => {
     const feed = await ctx.runQuery(api.feeds.get, { feedId: args.feedId });
@@ -106,6 +106,30 @@ export const refreshFeed = action({
           item.enclosure?.["@_url"] ||
           undefined;
 
+        // Extract author as string
+        let author: string | undefined;
+        const rawAuthor = item.author || item["dc:creator"];
+        if (rawAuthor) {
+          if (typeof rawAuthor === "string") {
+            author = rawAuthor;
+          } else if (typeof rawAuthor === "object" && rawAuthor.name) {
+            author = String(rawAuthor.name);
+          } else if (typeof rawAuthor === "object") {
+            // Skip objects we can't parse
+            author = undefined;
+          }
+        }
+
+        // Extract title as string
+        let titleStr: string;
+        if (typeof title === "string") {
+          titleStr = title;
+        } else if (typeof title === "object" && title?.["#text"]) {
+          titleStr = String(title["#text"]);
+        } else {
+          titleStr = String(title) || "Untitled";
+        }
+
         let isPaywalled = false;
         if (isSubstack && link) {
           try {
@@ -127,17 +151,13 @@ export const refreshFeed = action({
         }
 
         posts.push({
-          title: typeof title === "object" ? "Untitled" : String(title),
+          title: titleStr,
           url: typeof link === "object" ? "" : String(link),
           content: content || undefined,
           imageUrl,
           publishedAt: isNaN(publishedAt) ? Date.now() : publishedAt,
           guid: String(guid),
-          author: item.author
-            ? String(item.author)
-            : item["dc:creator"]
-              ? String(item["dc:creator"])
-              : undefined,
+          author,
           isPaywalled,
         });
       }

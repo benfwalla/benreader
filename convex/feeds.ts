@@ -4,12 +4,12 @@ import { v } from "convex/values";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("feeds").collect();
+    return await ctx.db.query("brFeeds").collect();
   },
 });
 
 export const get = query({
-  args: { feedId: v.id("feeds") },
+  args: { feedId: v.id("brFeeds") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.feedId);
   },
@@ -20,11 +20,11 @@ export const add = mutation({
     title: v.string(),
     xmlUrl: v.string(),
     htmlUrl: v.string(),
-    folderId: v.id("folders"),
+    folderId: v.id("brFolders"),
   },
-  returns: v.id("feeds"),
+  returns: v.id("brFeeds"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("feeds", {
+    return await ctx.db.insert("brFeeds", {
       title: args.title,
       xmlUrl: args.xmlUrl,
       htmlUrl: args.htmlUrl,
@@ -34,11 +34,11 @@ export const add = mutation({
 });
 
 export const remove = mutation({
-  args: { feedId: v.id("feeds") },
+  args: { feedId: v.id("brFeeds") },
   returns: v.null(),
   handler: async (ctx, args) => {
     const posts = await ctx.db
-      .query("posts")
+      .query("brPosts")
       .withIndex("by_feed", (q) => q.eq("feedId", args.feedId))
       .collect();
     for (const post of posts) {
@@ -51,7 +51,7 @@ export const remove = mutation({
 
 export const upsertPosts = internalMutation({
   args: {
-    feedId: v.id("feeds"),
+    feedId: v.id("brFeeds"),
     posts: v.array(
       v.object({
         title: v.string(),
@@ -69,12 +69,12 @@ export const upsertPosts = internalMutation({
   handler: async (ctx, args) => {
     for (const post of args.posts) {
       const existing = await ctx.db
-        .query("posts")
+        .query("brPosts")
         .withIndex("by_guid", (q) => q.eq("guid", post.guid))
         .first();
 
       if (!existing) {
-        await ctx.db.insert("posts", {
+        await ctx.db.insert("brPosts", {
           feedId: args.feedId,
           title: post.title,
           url: post.url,

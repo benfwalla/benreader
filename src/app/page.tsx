@@ -8,8 +8,8 @@ import { useState, useCallback, useRef } from "react";
 type Filter =
   | { type: "all" }
   | { type: "starred" }
-  | { type: "folder"; folderId: Id<"folders"> }
-  | { type: "feed"; feedId: Id<"feeds"> };
+  | { type: "folder"; folderId: Id<"brFolders"> }
+  | { type: "feed"; feedId: Id<"brFeeds"> };
 
 export default function Home() {
   const [filter, setFilter] = useState<Filter>({ type: "all" });
@@ -112,7 +112,7 @@ function Sidebar({
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
 
-  const getFeedsInFolder = (folderId: Id<"folders">) =>
+  const getFeedsInFolder = (folderId: Id<"brFolders">) =>
     feeds?.filter((f) => f.folderId === folderId) ?? [];
 
   return (
@@ -435,7 +435,7 @@ function PostList({ filter }: { filter: Filter }) {
 
 function AddFeedModal({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState("");
-  const [folderId, setFolderId] = useState<Id<"folders"> | "">("");
+  const [folderId, setFolderId] = useState<Id<"brFolders"> | "">("");
   const folders = useQuery(api.folders.list, {});
   const addFeed = useMutation(api.feeds.add);
   const refreshFeed = useAction(api.feedActions.refreshFeed);
@@ -448,7 +448,7 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
       title: url,
       xmlUrl: url,
       htmlUrl: url,
-      folderId: folderId as Id<"folders">,
+      folderId: folderId as Id<"brFolders">,
     });
 
     try {
@@ -476,7 +476,7 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
           <label className="block text-sm font-medium mb-1">Folder</label>
           <select
             value={folderId}
-            onChange={(e) => setFolderId(e.target.value as Id<"folders">)}
+            onChange={(e) => setFolderId(e.target.value as Id<"brFolders">)}
             className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             required
           >

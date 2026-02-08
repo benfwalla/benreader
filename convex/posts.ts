@@ -3,16 +3,16 @@ import { v } from "convex/values";
 
 export const list = query({
   args: {
-    feedId: v.optional(v.id("feeds")),
-    folderId: v.optional(v.id("folders")),
+    feedId: v.optional(v.id("brFeeds")),
+    folderId: v.optional(v.id("brFolders")),
     starredOnly: v.optional(v.boolean()),
     limit: v.optional(v.number()),
   },
   returns: v.array(
     v.object({
-      _id: v.id("posts"),
+      _id: v.id("brPosts"),
       _creationTime: v.number(),
-      feedId: v.id("feeds"),
+      feedId: v.id("brFeeds"),
       title: v.string(),
       url: v.string(),
       content: v.optional(v.string()),
@@ -33,19 +33,19 @@ export const list = query({
 
     if (args.starredOnly) {
       posts = await ctx.db
-        .query("posts")
+        .query("brPosts")
         .withIndex("by_starred", (q) => q.eq("isStarred", true))
         .order("desc")
         .take(limit);
     } else if (args.feedId) {
       posts = await ctx.db
-        .query("posts")
+        .query("brPosts")
         .withIndex("by_feed", (q) => q.eq("feedId", args.feedId!))
         .order("desc")
         .take(limit);
     } else {
       posts = await ctx.db
-        .query("posts")
+        .query("brPosts")
         .withIndex("by_publishedAt")
         .order("desc")
         .take(limit);
@@ -54,7 +54,7 @@ export const list = query({
     // If filtering by folder, get feeds in that folder first
     if (args.folderId && !args.feedId && !args.starredOnly) {
       const feeds = await ctx.db
-        .query("feeds")
+        .query("brFeeds")
         .withIndex("by_folder", (q) => q.eq("folderId", args.folderId!))
         .collect();
       const feedIds = new Set(feeds.map((f) => f._id));
@@ -79,7 +79,7 @@ export const list = query({
 });
 
 export const markRead = mutation({
-  args: { postId: v.id("posts") },
+  args: { postId: v.id("brPosts") },
   returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.postId, { isRead: true });
@@ -88,7 +88,7 @@ export const markRead = mutation({
 });
 
 export const toggleStar = mutation({
-  args: { postId: v.id("posts") },
+  args: { postId: v.id("brPosts") },
   returns: v.null(),
   handler: async (ctx, args) => {
     const post = await ctx.db.get(args.postId);
@@ -101,8 +101,8 @@ export const toggleStar = mutation({
 
 export const markAllRead = mutation({
   args: {
-    feedId: v.optional(v.id("feeds")),
-    folderId: v.optional(v.id("folders")),
+    feedId: v.optional(v.id("brFeeds")),
+    folderId: v.optional(v.id("brFolders")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -110,20 +110,20 @@ export const markAllRead = mutation({
 
     if (args.feedId) {
       posts = await ctx.db
-        .query("posts")
+        .query("brPosts")
         .withIndex("by_feed", (q) => q.eq("feedId", args.feedId!))
         .collect();
     } else if (args.folderId) {
       const feeds = await ctx.db
-        .query("feeds")
+        .query("brFeeds")
         .withIndex("by_folder", (q) => q.eq("folderId", args.folderId!))
         .collect();
       const feedIds = new Set(feeds.map((f) => f._id));
-      posts = (await ctx.db.query("posts").collect()).filter((p) =>
+      posts = (await ctx.db.query("brPosts").collect()).filter((p) =>
         feedIds.has(p.feedId)
       );
     } else {
-      posts = await ctx.db.query("posts").collect();
+      posts = await ctx.db.query("brPosts").collect();
     }
 
     await Promise.all(

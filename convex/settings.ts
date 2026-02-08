@@ -6,7 +6,7 @@ export const get = query({
   returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const setting = await ctx.db
-      .query("settings")
+      .query("brSettings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .first();
     return setting?.value ?? null;
@@ -18,13 +18,13 @@ export const set = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
-      .query("settings")
+      .query("brSettings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .first();
     if (existing) {
       await ctx.db.patch(existing._id, { value: args.value });
     } else {
-      await ctx.db.insert("settings", { key: args.key, value: args.value });
+      await ctx.db.insert("brSettings", { key: args.key, value: args.value });
     }
     return null;
   },
@@ -34,13 +34,13 @@ export const getAll = query({
   args: {},
   returns: v.array(
     v.object({
-      _id: v.id("settings"),
+      _id: v.id("brSettings"),
       _creationTime: v.number(),
       key: v.string(),
       value: v.string(),
     })
   ),
   handler: async (ctx) => {
-    return await ctx.db.query("settings").collect();
+    return await ctx.db.query("brSettings").collect();
   },
 });
