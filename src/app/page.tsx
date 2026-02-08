@@ -112,16 +112,13 @@ function Sidebar({
 
   return (
     <>
-      <div className="p-5" style={{ borderBottom: "1px solid var(--border)" }}>
-        <h1
-          className="text-xl font-bold tracking-tight"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
+      <div className="sidebar-header">
+        <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.01em" }}>
           📖 BenReader
         </h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-3">
+      <div style={{ flex: 1, overflowY: "auto", paddingTop: 12, paddingBottom: 12 }}>
         <SidebarItem
           label="All Posts"
           icon="📚"
@@ -135,11 +132,7 @@ function Sidebar({
           onClick={() => setFilter({ type: "starred" })}
         />
 
-        <div className="mt-4 mb-2 px-5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Folders
-          </span>
-        </div>
+        <div className="sidebar-section-label">Folders</div>
 
         {folders?.map((folder) => (
           <div key={folder._id}>
@@ -160,7 +153,7 @@ function Sidebar({
                 <button
                   key={feed._id}
                   onClick={() => setFilter({ type: "feed", feedId: feed._id })}
-                  className="w-full text-left pl-12 pr-5 py-1.5 text-sm text-secondary truncate transition-colors"
+                  className="sidebar-sub-item"
                 >
                   {feed.title}
                 </button>
@@ -169,18 +162,15 @@ function Sidebar({
         ))}
       </div>
 
-      <div className="p-3 flex flex-col gap-1" style={{ borderTop: "1px solid var(--border)" }}>
-        <button
-          onClick={onAddFeed}
-          className="btn-accent w-full py-2 px-3 text-sm"
-        >
+      <div className="sidebar-footer">
+        <button onClick={onAddFeed} className="btn-accent" style={{ padding: "8px 12px", fontSize: 14 }}>
           + Add Feed
         </button>
-        <div className="flex gap-1">
-          <button onClick={onImport} className="btn-outline flex-1 py-2">
+        <div style={{ display: "flex", gap: 4 }}>
+          <button onClick={onImport} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
             Import OPML
           </button>
-          <button onClick={onSettings} className="btn-outline flex-1 py-2">
+          <button onClick={onSettings} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
             ⚙ Settings
           </button>
         </div>
@@ -205,14 +195,12 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-5 py-2.5 flex items-center gap-3 text-sm transition-colors ${
-        active ? "bg-accent-light text-accent font-medium" : ""
-      }`}
+      className={`sidebar-item ${active ? "active" : ""}`}
     >
-      <span className="text-base">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
       {count !== undefined && (
-        <span className="text-xs text-muted">{count}</span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{count}</span>
       )}
     </button>
   );

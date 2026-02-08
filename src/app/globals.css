@@ -138,6 +138,57 @@ h1, h2, h3, h4, h5, h6 {
   border-right: 1px solid var(--border);
 }
 
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 20px;
+  font-size: 14px;
+  transition: background-color 0.15s;
+}
+.sidebar-item.active {
+  background-color: rgba(196, 123, 59, 0.1);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sidebar-sub-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 20px 6px 48px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s;
+}
+
+.sidebar-section-label {
+  padding: 16px 20px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* Bottom nav */
 .bottom-nav {
   background-color: var(--bg-card);
