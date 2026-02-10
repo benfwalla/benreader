@@ -588,14 +588,14 @@ function PostList({
                   </button>
 
                   <h3
-                    className="font-semibold text-base lg:text-lg leading-snug mb-1.5 group-hover:text-accent transition-colors line-clamp-2"
+                    className={`font-semibold text-base lg:text-lg leading-snug group-hover:text-accent transition-colors line-clamp-2 ${post.content ? "mb-1.5" : "mb-4"}`}
                     style={{ fontFamily: "var(--font-serif)" }}
                   >
                     {decodeEntities(post.title)}
                   </h3>
 
                   {post.content && (
-                    <p className="text-sm text-secondary leading-relaxed line-clamp-2 mb-3">
+                    <p className="text-sm text-secondary leading-relaxed line-clamp-2 mb-4">
                       {decodeEntities(post.content.slice(0, 150))}
                     </p>
                   )}
