@@ -855,8 +855,9 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function estimateReadingTime(wordCount: number): string {
-  const mins = Math.max(1, Math.round(wordCount / 238));
+function estimateReadingTime(charCount: number): string {
+  const words = charCount / 5;
+  const mins = Math.max(1, Math.round(words / 238));
   return `${mins} min read`;
 }
 
