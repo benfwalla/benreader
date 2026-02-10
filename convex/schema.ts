@@ -13,6 +13,7 @@ export default defineSchema({
     htmlUrl: v.string(),
     folderId: v.id("brFolders"),
     imageUrl: v.optional(v.string()),
+    brandColor: v.optional(v.string()),
     lastFetchedAt: v.optional(v.number()),
   }).index("by_folder", ["folderId"]),
 

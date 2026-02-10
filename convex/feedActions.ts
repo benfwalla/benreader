@@ -88,6 +88,27 @@ export const refreshFeed = action({
         });
       }
 
+      // Extract brand color from favicon if not already set
+      if (!feed.brandColor) {
+        try {
+          const hostname = new URL(feed.htmlUrl || feed.xmlUrl).hostname;
+          const faviconResp = await fetch(
+            `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+          if (faviconResp.ok) {
+            const buf = await faviconResp.arrayBuffer();
+            const color = extractDominantColorFromPNG(new Uint8Array(buf));
+            if (color) {
+              await ctx.runMutation(api.feeds.updateBrandColor, {
+                feedId: args.feedId,
+                brandColor: color,
+              });
+            }
+          }
+        } catch {}
+      }
+
       let items = channel.item || channel.entry || [];
       if (!Array.isArray(items)) items = [items];
 
@@ -195,6 +216,69 @@ export const refreshFeed = action({
     return null;
   },
 });
+
+// Simple PNG/ICO pixel color extraction without image libraries
+// Parses raw favicon bytes looking for colorful pixels
+function extractDominantColorFromPNG(bytes: Uint8Array): string | null {
+  // For ICO/PNG favicons, we can't easily decode without a library
+  // Instead, scan raw bytes for common RGB patterns
+  // Look for sequences of bytes that could be pixel data
+  const counts = new Map<string, number>();
+  
+  // Scan through bytes in groups of 3-4 (RGB/RGBA pixel data)
+  // This is a heuristic that works for uncompressed sections
+  for (let i = 0; i < bytes.length - 3; i++) {
+    const r = bytes[i], g = bytes[i + 1], b = bytes[i + 2];
+    
+    // Skip near-white, near-black, and gray
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    if (brightness > 240 || brightness < 15) continue;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    if (max - min < 30) continue; // skip grays
+    
+    // Quantize
+    const qr = Math.round(r / 32) * 32;
+    const qg = Math.round(g / 32) * 32;
+    const qb = Math.round(b / 32) * 32;
+    const key = `${qr},${qg},${qb}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  
+  if (counts.size === 0) return null;
+  
+  let maxCount = 0, dominant = "";
+  counts.forEach((count, key) => {
+    if (count > maxCount) { maxCount = count; dominant = key; }
+  });
+  
+  // Need a minimum occurrence to be meaningful
+  if (maxCount < 5) return null;
+  
+  let [r, g, b] = dominant.split(",").map(Number);
+  
+  // Ensure readable against #F5F0E8 (lum ~0.88) — need 3:1 contrast
+  for (let i = 0; i < 20; i++) {
+    const lum = relativeLuminance(r, g, b);
+    const bgLum = 0.88;
+    const ratio = (bgLum + 0.05) / (lum + 0.05);
+    if (ratio >= 3) break;
+    r = Math.round(r * 0.85);
+    g = Math.round(g * 0.85);
+    b = Math.round(b * 0.85);
+  }
+  
+  // Convert to hex
+  const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+  return hex;
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const rs = r / 255, gs = g / 255, bs = b / 255;
+  const rl = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  const gl = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  const bl = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+}
 
 export const refreshAll = action({
   args: {},

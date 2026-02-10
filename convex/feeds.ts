@@ -33,6 +33,15 @@ export const add = mutation({
   },
 });
 
+export const updateBrandColor = mutation({
+  args: { feedId: v.id("brFeeds"), brandColor: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.feedId, { brandColor: args.brandColor });
+    return null;
+  },
+});
+
 export const updateImage = mutation({
   args: { feedId: v.id("brFeeds"), imageUrl: v.string() },
   returns: v.null(),
