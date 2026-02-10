@@ -3,8 +3,19 @@
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { useState, useCallback, useRef, useEffect } from "react";
-import { House, Star, SquaresFour, List, ArrowsClockwise, LockSimple } from "@phosphor-icons/react";
+import { useState, useRef, useEffect } from "react";
+import DOMPurify from "dompurify";
+import {
+  House,
+  Star,
+  SquaresFour,
+  List,
+  ArrowsClockwise,
+  LockSimple,
+  ArrowLeft,
+  ArrowSquareOut,
+  X,
+} from "@phosphor-icons/react";
 
 type Filter =
   | { type: "all" }
@@ -12,12 +23,24 @@ type Filter =
   | { type: "folder"; folderId: Id<"brFolders"> }
   | { type: "feed"; feedId: Id<"brFeeds"> };
 
+type ReaderPost = {
+  _id: Id<"brPosts">;
+  title: string;
+  url: string;
+  feedTitle: string;
+  publishedAt: number;
+  author?: string;
+  isStarred: boolean;
+  isPaywalled: boolean;
+};
+
 export default function Home() {
   const [filter, setFilter] = useState<Filter | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
   const folders = useQuery(api.folders.list, {});
 
   // Default to "Blogs" folder
@@ -32,7 +55,7 @@ export default function Home() {
     }
   }, [folders, filter]);
 
-  const activeFilter = filter ?? { type: "all" } as Filter;
+  const activeFilter = filter ?? ({ type: "all" } as Filter);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -55,6 +78,7 @@ export default function Home() {
           setFilter={(f) => {
             setFilter(f);
             setSidebarOpen(false);
+            setReaderPost(null);
           }}
           onAddFeed={() => setShowAddFeed(true)}
           onImport={() => setShowImport(true)}
@@ -64,37 +88,54 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
-        <Header
-          onMenuClick={() => setSidebarOpen(true)}
-          filter={activeFilter}
-        />
-        <PostList filter={activeFilter} />
+        {readerPost ? (
+          <ArticleReader
+            post={readerPost}
+            onClose={() => setReaderPost(null)}
+          />
+        ) : (
+          <>
+            <Header
+              onMenuClick={() => setSidebarOpen(true)}
+              filter={activeFilter}
+            />
+            <PostList
+              filter={activeFilter}
+              onOpenPost={setReaderPost}
+              onFilterFeed={(feedId) => {
+                setFilter({ type: "feed", feedId });
+              }}
+            />
+          </>
+        )}
       </main>
 
       {/* Bottom nav on mobile */}
-      <nav className="fixed bottom-0 left-0 right-0 bottom-nav lg:hidden z-20">
-        <button
-          onClick={() => setFilter({ type: "all" })}
-          className={`bottom-nav-item ${activeFilter.type === "all" ? "active" : ""}`}
-        >
-          <House size={22} weight={activeFilter.type === "all" ? "fill" : "regular"} />
-          All
-        </button>
-        <button
-          onClick={() => setFilter({ type: "starred" })}
-          className={`bottom-nav-item ${activeFilter.type === "starred" ? "active" : ""}`}
-        >
-          <Star size={22} weight={activeFilter.type === "starred" ? "fill" : "regular"} />
-          Starred
-        </button>
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="bottom-nav-item"
-        >
-          <SquaresFour size={22} />
-          Folders
-        </button>
-      </nav>
+      {!readerPost && (
+        <nav className="fixed bottom-0 left-0 right-0 bottom-nav lg:hidden z-20">
+          <button
+            onClick={() => { setFilter({ type: "all" }); setReaderPost(null); }}
+            className={`bottom-nav-item ${activeFilter.type === "all" ? "active" : ""}`}
+          >
+            <House size={22} weight={activeFilter.type === "all" ? "fill" : "regular"} />
+            All
+          </button>
+          <button
+            onClick={() => { setFilter({ type: "starred" }); setReaderPost(null); }}
+            className={`bottom-nav-item ${activeFilter.type === "starred" ? "active" : ""}`}
+          >
+            <Star size={22} weight={activeFilter.type === "starred" ? "fill" : "regular"} />
+            Starred
+          </button>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="bottom-nav-item"
+          >
+            <SquaresFour size={22} />
+            Folders
+          </button>
+        </nav>
+      )}
 
       {/* Modals */}
       {showAddFeed && <AddFeedModal onClose={() => setShowAddFeed(false)} />}
@@ -103,6 +144,166 @@ export default function Home() {
     </div>
   );
 }
+
+/* ──────────────────── Article Reader ──────────────────── */
+
+function ArticleReader({
+  post,
+  onClose,
+}: {
+  post: ReaderPost;
+  onClose: () => void;
+}) {
+  const fetchArticle = useAction(api.articles.fetch);
+  const toggleStar = useMutation(api.posts.toggleStar);
+  const [article, setArticle] = useState<{
+    title: string;
+    content: string;
+    byline?: string;
+    siteName?: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    setArticle(null);
+
+    fetchArticle({ url: post.url })
+      .then((result) => {
+        if (cancelled) return;
+        if (result) {
+          setArticle({
+            title: result.title,
+            content: result.content,
+            byline: result.byline ?? undefined,
+            siteName: result.siteName ?? undefined,
+          });
+        } else {
+          setError(true);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError(true);
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [post.url, fetchArticle]);
+
+  // Scroll to top when article loads
+  useEffect(() => {
+    contentRef.current?.scrollTo(0, 0);
+  }, [article]);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Reader header */}
+      <header className="reader-header">
+        <button onClick={onClose} className="reader-back-btn">
+          <ArrowLeft size={20} />
+          <span className="hidden sm:inline">Back</span>
+        </button>
+        <div className="flex-1 min-w-0">
+          <span className="text-xs text-accent font-medium truncate block">
+            {post.feedTitle}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => toggleStar({ postId: post._id })}
+            className="p-2 rounded-lg transition-colors"
+            style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
+          >
+            <Star size={20} weight={post.isStarred ? "fill" : "regular"} />
+          </button>
+          <a
+            href={post.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="reader-external-link"
+            title="Open original"
+          >
+            <ArrowSquareOut size={20} />
+          </a>
+        </div>
+      </header>
+
+      {/* Article content */}
+      <div ref={contentRef} className="flex-1 overflow-y-auto pb-20 lg:pb-8">
+        <article className="reader-article">
+          {/* Article meta */}
+          <div className="reader-meta">
+            <h1 className="reader-title">{decodeEntities(post.title)}</h1>
+            <div className="reader-byline">
+              {(article?.byline || post.author) && (
+                <span>{article?.byline || post.author}</span>
+              )}
+              {(article?.byline || post.author) && <span className="text-muted">·</span>}
+              <span className="text-muted">{post.feedTitle}</span>
+              <span className="text-muted">·</span>
+              <time className="text-muted">{formatDateLong(post.publishedAt)}</time>
+              {post.isPaywalled && (
+                <span className="reader-paywall-badge">
+                  <LockSimple size={12} weight="fill" /> Paywall
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Article body */}
+          {loading && (
+            <div className="reader-loading">
+              <div className="reader-skeleton" />
+              <div className="reader-skeleton short" />
+              <div className="reader-skeleton" />
+              <div className="reader-skeleton medium" />
+              <div className="reader-skeleton" />
+            </div>
+          )}
+
+          {error && (
+            <div className="reader-error">
+              <p>Couldn't load this article in the reader.</p>
+              <a
+                href={post.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-accent inline-flex items-center gap-2 mt-3"
+                style={{ padding: "10px 20px" }}
+              >
+                <ArrowSquareOut size={16} />
+                Read on {article?.siteName || post.feedTitle}
+              </a>
+            </div>
+          )}
+
+          {article && !loading && (
+            <div
+              className="reader-content"
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(article.content, {
+                  ADD_TAGS: ["iframe"],
+                  ADD_ATTR: ["allow", "allowfullscreen", "frameborder", "scrolling", "loading"],
+                }),
+              }}
+            />
+          )}
+        </article>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────── Sidebar ──────────────────── */
 
 function Sidebar({
   filter,
@@ -126,7 +327,14 @@ function Sidebar({
   return (
     <>
       <div className="sidebar-header">
-        <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.01em" }}>
+        <h1
+          style={{
+            fontFamily: "var(--font-serif)",
+            fontSize: "1.25rem",
+            fontWeight: 700,
+            letterSpacing: "-0.01em",
+          }}
+        >
           📖 BenReader
         </h1>
       </div>
@@ -153,12 +361,8 @@ function Sidebar({
               label={folder.name}
               icon="📁"
               count={getFeedsInFolder(folder._id).length}
-              active={
-                filter.type === "folder" && filter.folderId === folder._id
-              }
-              onClick={() =>
-                setFilter({ type: "folder", folderId: folder._id })
-              }
+              active={filter.type === "folder" && filter.folderId === folder._id}
+              onClick={() => setFilter({ type: "folder", folderId: folder._id })}
             />
             {filter.type === "folder" &&
               filter.folderId === folder._id &&
@@ -166,7 +370,7 @@ function Sidebar({
                 <button
                   key={feed._id}
                   onClick={() => setFilter({ type: "feed", feedId: feed._id })}
-                  className="sidebar-sub-item"
+                  className={`sidebar-sub-item`}
                 >
                   {feed.title}
                 </button>
@@ -211,13 +415,17 @@ function SidebarItem({
       className={`sidebar-item ${active ? "active" : ""}`}
     >
       <span style={{ fontSize: 16 }}>{icon}</span>
-      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
       {count !== undefined && (
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{count}</span>
       )}
     </button>
   );
 }
+
+/* ──────────────────── Header ──────────────────── */
 
 function Header({
   onMenuClick,
@@ -228,6 +436,8 @@ function Header({
 }) {
   const refreshAll = useAction(api.feedActions.refreshAll);
   const markAllRead = useMutation(api.posts.markAllRead);
+  const folders = useQuery(api.folders.list, {});
+  const feeds = useQuery(api.feeds.list, {});
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -247,14 +457,15 @@ function Header({
     markAllRead(args as any);
   };
 
-  const title =
-    filter.type === "all"
-      ? "All Posts"
-      : filter.type === "starred"
-        ? "Starred"
-        : filter.type === "folder"
-          ? "Folder"
-          : "Feed";
+  let title = "All Posts";
+  if (filter.type === "starred") title = "Starred";
+  else if (filter.type === "folder") {
+    const folder = folders?.find((f) => f._id === filter.folderId);
+    title = folder?.name ?? "Folder";
+  } else if (filter.type === "feed") {
+    const feed = feeds?.find((f) => f._id === filter.feedId);
+    title = feed?.title ?? "Feed";
+  }
 
   return (
     <header className="header-bar">
@@ -266,17 +477,11 @@ function Header({
         <List size={24} />
       </button>
 
-      <h2
-        className="text-lg font-semibold flex-1 min-w-0"
-        style={{ fontFamily: "var(--font-serif)" }}
-      >
+      <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>
         {title}
       </h2>
 
-      <button
-        onClick={handleMarkAllRead}
-        className="btn-outline"
-      >
+      <button onClick={handleMarkAllRead} className="btn-outline">
         Mark all read
       </button>
 
@@ -285,14 +490,28 @@ function Header({
         disabled={refreshing}
         className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}
       >
-        <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} style={{ display: "inline", marginRight: 4 }} />
+        <ArrowsClockwise
+          size={14}
+          className={refreshing ? "animate-spin" : ""}
+          style={{ display: "inline", marginRight: 4 }}
+        />
         {refreshing ? "Refreshing…" : "Refresh"}
       </button>
     </header>
   );
 }
 
-function PostList({ filter }: { filter: Filter }) {
+/* ──────────────────── Post List ──────────────────── */
+
+function PostList({
+  filter,
+  onOpenPost,
+  onFilterFeed,
+}: {
+  filter: Filter;
+  onOpenPost: (post: ReaderPost) => void;
+  onFilterFeed: (feedId: Id<"brFeeds">) => void;
+}) {
   const posts = useQuery(api.posts.list, {
     feedId: filter.type === "feed" ? filter.feedId : undefined,
     folderId: filter.type === "folder" ? filter.folderId : undefined,
@@ -324,30 +543,44 @@ function PostList({ filter }: { filter: Filter }) {
     <div className="flex-1 overflow-y-auto pb-20 lg:pb-4">
       <div className="feed-list">
         {posts.map((post, i) => (
-          <article
-            key={post._id}
-            className="animate-fade-in"
-            style={{ animationDelay: `${i * 30}ms` }}
-          >
+          <article key={post._id} className="animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
             <div
               className={`post-card group ${post.isRead ? "read" : ""}`}
               onClick={() => {
                 if (!post.isRead) markRead({ postId: post._id });
-                window.open(post.url, "_blank");
+                onOpenPost({
+                  _id: post._id,
+                  title: post.title,
+                  url: post.url,
+                  feedTitle: post.feedTitle,
+                  publishedAt: post.publishedAt,
+                  author: post.author,
+                  isStarred: post.isStarred,
+                  isPaywalled: post.isPaywalled,
+                });
               }}
             >
               <div className="flex gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-xs font-medium text-accent truncate">
+                    <button
+                      className="text-xs font-medium text-accent truncate hover:underline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFilterFeed(post.feedId);
+                      }}
+                    >
                       {post.feedTitle}
-                    </span>
+                    </button>
                     <span className="text-xs text-muted">·</span>
                     <span className="text-xs text-muted whitespace-nowrap">
                       {formatDate(post.publishedAt)}
                     </span>
                     {post.isPaywalled && (
-                      <span title="Paywalled" style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                      <span
+                        title="Paywalled"
+                        style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center" }}
+                      >
                         <LockSimple size={14} weight="fill" />
                       </span>
                     )}
@@ -367,9 +600,7 @@ function PostList({ filter }: { filter: Filter }) {
                   )}
 
                   {post.author && post.author !== "[object Object]" && (
-                    <p className="text-xs text-muted mt-2">
-                      by {post.author}
-                    </p>
+                    <p className="text-xs text-muted mt-2">by {post.author}</p>
                   )}
                 </div>
 
@@ -378,7 +609,11 @@ function PostList({ filter }: { filter: Filter }) {
                     <img
                       src={post.imageUrl || post.feedImageUrl}
                       alt=""
-                      className={`rounded-lg object-cover ${post.imageUrl ? "w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28" : "w-10 h-10 sm:w-12 sm:h-12"}`}
+                      className={`rounded-lg object-cover ${
+                        post.imageUrl
+                          ? "w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28"
+                          : "w-10 h-10 sm:w-12 sm:h-12"
+                      }`}
                       loading="lazy"
                     />
                   </div>
@@ -418,6 +653,8 @@ function PostList({ filter }: { filter: Filter }) {
   );
 }
 
+/* ──────────────────── Modals ──────────────────── */
+
 function AddFeedModal({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState("");
   const [folderId, setFolderId] = useState<Id<"brFolders"> | "">("");
@@ -439,7 +676,6 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
     try {
       await refreshFeed({ feedId });
     } catch {}
-
     onClose();
   };
 
@@ -473,10 +709,7 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
             ))}
           </select>
         </div>
-        <button
-          type="submit"
-          className="btn-accent w-full py-2"
-        >
+        <button type="submit" className="btn-accent w-full py-2">
           Add Feed
         </button>
       </form>
@@ -507,17 +740,8 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal onClose={onClose} title="Import OPML">
       <div className="space-y-4">
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".opml,.xml"
-          className="w-full text-sm"
-        />
-        <button
-          onClick={handleImport}
-          disabled={importing}
-          className="btn-accent w-full py-2"
-        >
+        <input ref={fileRef} type="file" accept=".opml,.xml" className="w-full text-sm" />
+        <button onClick={handleImport} disabled={importing} className="btn-accent w-full py-2">
           {importing ? "Importing…" : "Import"}
         </button>
       </div>
@@ -547,16 +771,17 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-2">
-            Background Color
-          </label>
+          <label className="block text-sm font-medium mb-2">Background Color</label>
           <div className="grid grid-cols-3 gap-2">
             {colors.map((c) => (
               <button
                 key={c.value}
                 onClick={() => applyBg(c.value)}
                 className={`color-swatch ${(bgColor ?? "#F5F0E8") === c.value ? "active" : ""}`}
-                style={{ backgroundColor: c.value, color: c.value === "#1A1A2E" || c.value === "#2C2418" ? "#fff" : "#2C2418" }}
+                style={{
+                  backgroundColor: c.value,
+                  color: c.value === "#1A1A2E" || c.value === "#2C2418" ? "#fff" : "#2C2418",
+                }}
               >
                 {c.name}
               </button>
@@ -582,16 +807,10 @@ function Modal({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative modal-card animate-fade-in">
         <div className="flex items-center justify-between mb-4">
-          <h3
-            className="text-lg font-semibold"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
+          <h3 className="text-lg font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
             {title}
           </h3>
-          <button
-            onClick={onClose}
-            className="text-muted transition-colors"
-          >
+          <button onClick={onClose} className="text-muted transition-colors">
             ✕
           </button>
         </div>
@@ -600,6 +819,8 @@ function Modal({
     </div>
   );
 }
+
+/* ──────────────────── Helpers ──────────────────── */
 
 function decodeEntities(text: string): string {
   return text
@@ -624,4 +845,13 @@ function formatDate(ts: number): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatDateLong(ts: number): string {
+  return new Date(ts).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }

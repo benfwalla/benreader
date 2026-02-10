@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as articles from "../articles.js";
 import type * as crons from "../crons.js";
 import type * as feedActions from "../feedActions.js";
 import type * as feeds from "../feeds.js";
@@ -22,6 +23,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  articles: typeof articles;
   crons: typeof crons;
   feedActions: typeof feedActions;
   feeds: typeof feeds;
