@@ -45,13 +45,17 @@ export const fetch = action({
 
       if (!article || !article.content) return null;
 
+      // Count words from text content (strip HTML tags)
+      const textOnly = article.textContent || article.content.replace(/<[^>]*>/g, " ");
+      const wordCount = textOnly.split(/\s+/).filter((w: string) => w.length > 0).length;
+
       return {
         title: article.title || "Untitled",
         content: article.content,
         excerpt: article.excerpt || undefined,
         byline: article.byline || undefined,
         siteName: article.siteName || undefined,
-        length: article.length || 0,
+        length: wordCount,
       };
     } catch (e) {
       console.error("Failed to fetch article:", e);
