@@ -25,6 +25,7 @@ export const list = query({
       author: v.optional(v.string()),
       feedTitle: v.string(),
       feedImageUrl: v.optional(v.string()),
+      feedHtmlUrl: v.optional(v.string()),
       wordCount: v.optional(v.number()),
     })
   ),
@@ -64,16 +65,16 @@ export const list = query({
     }
 
     // Attach feed titles
-    const feedCache = new Map<string, { title: string; imageUrl?: string }>();
+    const feedCache = new Map<string, { title: string; imageUrl?: string; htmlUrl?: string }>();
     const result = [];
     for (const post of posts) {
       let feedInfo = feedCache.get(post.feedId);
       if (!feedInfo) {
         const feed = await ctx.db.get(post.feedId);
-        feedInfo = { title: feed?.title ?? "Unknown", imageUrl: feed?.imageUrl };
+        feedInfo = { title: feed?.title ?? "Unknown", imageUrl: feed?.imageUrl, htmlUrl: feed?.htmlUrl };
         feedCache.set(post.feedId, feedInfo);
       }
-      result.push({ ...post, feedTitle: feedInfo.title, feedImageUrl: feedInfo.imageUrl });
+      result.push({ ...post, feedTitle: feedInfo.title, feedImageUrl: feedInfo.imageUrl, feedHtmlUrl: feedInfo.htmlUrl });
     }
 
     return result;

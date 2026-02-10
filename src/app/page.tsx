@@ -28,6 +28,8 @@ type ReaderPost = {
   title: string;
   url: string;
   feedTitle: string;
+  feedHtmlUrl?: string;
+  feedImageUrl?: string;
   publishedAt: number;
   author?: string;
   isStarred: boolean;
@@ -214,8 +216,9 @@ function ArticleReader({
           <ArrowLeft size={20} />
           <span className="hidden sm:inline">Back</span>
         </button>
-        <div className="flex-1 min-w-0">
-          <span className="text-xs text-accent font-medium truncate block">
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <BlogIcon htmlUrl={post.feedHtmlUrl} imageUrl={post.feedImageUrl} size={18} />
+          <span className="text-xs text-accent font-medium truncate">
             {post.feedTitle}
           </span>
         </div>
@@ -380,7 +383,8 @@ function Sidebar({
                   onClick={() => setFilter({ type: "feed", feedId: feed._id })}
                   className={`sidebar-sub-item`}
                 >
-                  {feed.title}
+                  <BlogIcon htmlUrl={feed.htmlUrl} imageUrl={feed.imageUrl} size={14} />
+                  <span className="truncate">{feed.title}</span>
                 </button>
               ))}
           </div>
@@ -561,6 +565,8 @@ function PostList({
                   title: post.title,
                   url: post.url,
                   feedTitle: post.feedTitle,
+                  feedHtmlUrl: post.feedHtmlUrl,
+                  feedImageUrl: post.feedImageUrl,
                   publishedAt: post.publishedAt,
                   author: post.author,
                   isStarred: post.isStarred,
@@ -572,12 +578,13 @@ function PostList({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
                     <button
-                      className="text-xs font-medium text-accent truncate hover:underline"
+                      className="text-xs font-medium text-accent truncate hover:underline inline-flex items-center gap-1.5"
                       onClick={(e) => {
                         e.stopPropagation();
                         onFilterFeed(post.feedId);
                       }}
                     >
+                      <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
                       {post.feedTitle}
                     </button>
                     <span className="text-xs text-muted">·</span>
@@ -833,6 +840,31 @@ function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+/* ──────────────────── Blog Icon ──────────────────── */
+
+function BlogIcon({ htmlUrl, imageUrl, size = 16 }: { htmlUrl?: string; imageUrl?: string; size?: number }) {
+  const faviconUrl = htmlUrl
+    ? `https://www.google.com/s2/favicons?domain=${new URL(htmlUrl).hostname}&sz=${size * 2}`
+    : undefined;
+  const src = imageUrl || faviconUrl;
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      className="rounded-sm object-cover flex-shrink-0"
+      style={{ width: size, height: size }}
+      loading="lazy"
+      onError={(e) => {
+        // Hide broken images
+        (e.target as HTMLImageElement).style.display = "none";
+      }}
+    />
   );
 }
 
