@@ -584,6 +584,14 @@ function PostList({
                     <span className="text-xs text-muted whitespace-nowrap">
                       {formatDate(post.publishedAt)}
                     </span>
+                    {post.wordCount && post.wordCount > 0 && (
+                      <>
+                        <span className="text-xs text-muted">·</span>
+                        <span className="text-xs text-muted whitespace-nowrap">
+                          {estimateReadingTime(post.wordCount)}
+                        </span>
+                      </>
+                    )}
                     {post.isPaywalled && (
                       <span
                         title="Paywalled"

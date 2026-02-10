@@ -114,9 +114,9 @@ export const refreshFeed = action({
           item.content ||
           "";
         if (typeof content === "object") content = "";
-        content = String(content)
-          .replace(/<[^>]*>/g, "")
-          .slice(0, 300);
+        const contentText = String(content).replace(/<[^>]*>/g, "");
+        const wordCount = contentText.split(/\s+/).filter((w: string) => w.length > 0).length;
+        content = contentText.slice(0, 300);
 
         let imageUrl =
           item["media:content"]?.["@_url"] ||
@@ -178,6 +178,7 @@ export const refreshFeed = action({
           guid: String(guid),
           author,
           isPaywalled,
+          wordCount: wordCount > 0 ? wordCount : undefined,
         });
       }
 

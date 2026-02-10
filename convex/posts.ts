@@ -25,6 +25,7 @@ export const list = query({
       author: v.optional(v.string()),
       feedTitle: v.string(),
       feedImageUrl: v.optional(v.string()),
+      wordCount: v.optional(v.number()),
     })
   ),
   handler: async (ctx, args) => {

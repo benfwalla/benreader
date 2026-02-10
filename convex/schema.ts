@@ -28,6 +28,7 @@ export default defineSchema({
     isPaywalled: v.boolean(),
     guid: v.string(),
     author: v.optional(v.string()),
+    wordCount: v.optional(v.number()),
   })
     .index("by_feed", ["feedId", "publishedAt"])
     .index("by_starred", ["isStarred", "publishedAt"])

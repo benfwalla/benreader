@@ -71,6 +71,7 @@ export const upsertPosts = internalMutation({
         guid: v.string(),
         author: v.optional(v.string()),
         isPaywalled: v.boolean(),
+        wordCount: v.optional(v.number()),
       })
     ),
   },
@@ -100,6 +101,7 @@ export const upsertPosts = internalMutation({
           isPaywalled: post.isPaywalled,
           guid: post.guid,
           author: post.author,
+          wordCount: post.wordCount,
         });
       }
     }
