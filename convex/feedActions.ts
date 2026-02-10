@@ -119,7 +119,7 @@ export const refreshFeed = action({
         xmlLower.includes("substackcdn.com");
       const posts = [];
 
-      for (const item of items.slice(0, 50)) {
+      for (const item of items.slice(0, 100)) {
         const title = item.title || "Untitled";
         const link = item.link?.["@_href"] || item.link || item.url || "";
         const guid =

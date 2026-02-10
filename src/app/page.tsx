@@ -527,7 +527,7 @@ function PostList({
     feedId: filter.type === "feed" ? filter.feedId : undefined,
     folderId: filter.type === "folder" ? filter.folderId : undefined,
     starredOnly: filter.type === "starred" ? true : undefined,
-    limit: 100,
+    limit: 200,
   });
 
   const markRead = useMutation(api.posts.markRead);
@@ -551,7 +551,7 @@ function PostList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto pb-20 lg:pb-4">
+    <div className="flex-1 overflow-y-auto pb-28 lg:pb-4">
       <div className="feed-list">
         {posts.map((post, i) => (
           <article key={post._id} className="animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>

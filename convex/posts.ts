@@ -31,7 +31,7 @@ export const list = query({
     })
   ),
   handler: async (ctx, args) => {
-    const limit = args.limit ?? 100;
+    const limit = args.limit ?? 200;
 
     let posts;
 
