@@ -161,6 +161,7 @@ function ArticleReader({
     content: string;
     byline?: string;
     siteName?: string;
+    length?: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -181,6 +182,7 @@ function ArticleReader({
             content: result.content,
             byline: result.byline ?? undefined,
             siteName: result.siteName ?? undefined,
+            length: result.length,
           });
         } else {
           setError(true);
@@ -251,6 +253,12 @@ function ArticleReader({
               <span className="text-muted">{post.feedTitle}</span>
               <span className="text-muted">·</span>
               <time className="text-muted">{formatDateLong(post.publishedAt)}</time>
+              {article?.length && (
+                <>
+                  <span className="text-muted">·</span>
+                  <span className="text-muted">{estimateReadingTime(article.length)}</span>
+                </>
+              )}
               {post.isPaywalled && (
                 <span className="reader-paywall-badge">
                   <LockSimple size={12} weight="fill" /> Paywall
@@ -845,6 +853,11 @@ function formatDate(ts: number): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function estimateReadingTime(wordCount: number): string {
+  const mins = Math.max(1, Math.round(wordCount / 238));
+  return `${mins} min read`;
 }
 
 function formatDateLong(ts: number): string {
