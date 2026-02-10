@@ -218,9 +218,7 @@ function ArticleReader({
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <BlogIcon htmlUrl={post.feedHtmlUrl} imageUrl={post.feedImageUrl} size={18} />
-          <span className="text-xs text-accent font-medium truncate">
-            {post.feedTitle}
-          </span>
+          <BlogName name={post.feedTitle} htmlUrl={post.feedHtmlUrl} className="text-sm text-accent font-medium truncate" />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -253,7 +251,7 @@ function ArticleReader({
                 <span>{article?.byline || post.author}</span>
               )}
               {(article?.byline || post.author) && <span className="text-muted">·</span>}
-              <span className="text-muted">{post.feedTitle}</span>
+              <BlogName name={post.feedTitle} htmlUrl={post.feedHtmlUrl} className="text-muted" />
               <span className="text-muted">·</span>
               <time className="text-muted">{formatDateLong(post.publishedAt)}</time>
               {article?.length && (
@@ -578,14 +576,14 @@ function PostList({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
                     <button
-                      className="text-xs font-medium text-accent truncate hover:underline inline-flex items-center gap-1.5"
+                      className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5"
                       onClick={(e) => {
                         e.stopPropagation();
                         onFilterFeed(post.feedId);
                       }}
                     >
                       <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
-                      {post.feedTitle}
+                      <BlogName name={post.feedTitle} htmlUrl={post.feedHtmlUrl} className="text-accent" />
                     </button>
                     <span className="text-xs text-muted">·</span>
                     <span className="text-xs text-muted whitespace-nowrap">
@@ -843,6 +841,116 @@ function Modal({
   );
 }
 
+/* ──────────────────── Favicon Color Extraction ──────────────────── */
+
+function useFaviconColor(htmlUrl?: string): string | undefined {
+  const [color, setColor] = useState<string | undefined>(undefined);
+  const cacheRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (!htmlUrl) return;
+    const hostname = new URL(htmlUrl).hostname;
+    
+    // Check cache
+    const cached = cacheRef.current.get(hostname);
+    if (cached) { setColor(cached); return; }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
+    
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        
+        // Count colors, skip white/near-white/black/near-black/transparent
+        const counts = new Map<string, number>();
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+          if (a < 128) continue; // skip transparent
+          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+          if (brightness > 240 || brightness < 15) continue; // skip near-white/black
+          // Also skip grays (low saturation)
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          if (max - min < 20) continue;
+          // Quantize to reduce noise
+          const qr = Math.round(r / 16) * 16;
+          const qg = Math.round(g / 16) * 16;
+          const qb = Math.round(b / 16) * 16;
+          const key = `${qr},${qg},${qb}`;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        
+        if (counts.size === 0) return;
+        
+        // Find dominant color
+        let maxCount = 0, dominant = "";
+        counts.forEach((count, key) => {
+          if (count > maxCount) { maxCount = count; dominant = key; }
+        });
+        
+        const [r, g, b] = dominant.split(",").map(Number);
+        
+        // Ensure readability on light background (#F5F0E8)
+        // Target contrast ratio >= 3:1 against bg (relative luminance ~0.88)
+        const adjusted = ensureReadable(r, g, b);
+        const hex = `rgb(${adjusted[0]},${adjusted[1]},${adjusted[2]})`;
+        
+        cacheRef.current.set(hostname, hex);
+        setColor(hex);
+      } catch {}
+    };
+  }, [htmlUrl]);
+
+  return color;
+}
+
+function ensureReadable(r: number, g: number, b: number): [number, number, number] {
+  // Calculate relative luminance
+  const lum = relativeLuminance(r, g, b);
+  const bgLum = relativeLuminance(245, 240, 232); // #F5F0E8
+  
+  let contrast = contrastRatio(lum, bgLum);
+  
+  // If contrast is good enough, use as-is
+  if (contrast >= 3) return [r, g, b];
+  
+  // Darken progressively until readable
+  let factor = 0.9;
+  let dr = r, dg = g, db = b;
+  for (let i = 0; i < 20; i++) {
+    dr = Math.round(dr * factor);
+    dg = Math.round(dg * factor);
+    db = Math.round(db * factor);
+    const newLum = relativeLuminance(dr, dg, db);
+    contrast = contrastRatio(newLum, bgLum);
+    if (contrast >= 3) return [dr, dg, db];
+  }
+  
+  // Fallback to near-black
+  return [44, 36, 24]; // var(--text-primary)
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const rs = r / 255, gs = g / 255, bs = b / 255;
+  const rl = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+  const gl = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+  const bl = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+}
+
+function contrastRatio(l1: number, l2: number): number {
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 /* ──────────────────── Blog Icon ──────────────────── */
 
 function BlogIcon({ htmlUrl, imageUrl, size = 16 }: { htmlUrl?: string; imageUrl?: string; size?: number }) {
@@ -865,6 +973,15 @@ function BlogIcon({ htmlUrl, imageUrl, size = 16 }: { htmlUrl?: string; imageUrl
         (e.target as HTMLImageElement).style.display = "none";
       }}
     />
+  );
+}
+
+function BlogName({ name, htmlUrl, className }: { name: string; htmlUrl?: string; className?: string }) {
+  const brandColor = useFaviconColor(htmlUrl);
+  return (
+    <span className={className} style={brandColor ? { color: brandColor } : undefined}>
+      {name}
+    </span>
   );
 }
 
