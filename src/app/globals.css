@@ -222,13 +222,6 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--accent);
 }
 
-/* Star divider */
-.card-divider {
-  border-top: 1px solid rgba(221, 213, 200, 0.5);
-  margin-top: 12px;
-  padding-top: 12px;
-}
-
 /* Buttons */
 .btn-accent {
   background-color: var(--accent);

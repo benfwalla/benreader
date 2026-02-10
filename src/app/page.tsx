@@ -14,7 +14,6 @@ import {
   LockSimple,
   ArrowLeft,
   ArrowSquareOut,
-  X,
 } from "@phosphor-icons/react";
 
 type Filter =
@@ -32,7 +31,6 @@ type ReaderPost = {
   feedImageUrl?: string;
   feedBrandColor?: string;
   publishedAt: number;
-  author?: string;
   isStarred: boolean;
   isPaywalled: boolean;
 };
@@ -248,10 +246,12 @@ function ArticleReader({
           <div className="reader-meta">
             <h1 className="reader-title">{decodeEntities(post.title)}</h1>
             <div className="reader-byline">
-              {(article?.byline || post.author) && (
-                <span>{article?.byline || post.author}</span>
+              {article?.byline && (
+                <>
+                  <span>{article.byline}</span>
+                  <span className="text-muted">·</span>
+                </>
               )}
-              {(article?.byline || post.author) && <span className="text-muted">·</span>}
               <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-muted" />
               <span className="text-muted">·</span>
               <time className="text-muted">{formatDateLong(post.publishedAt)}</time>
@@ -568,105 +568,76 @@ function PostList({
                   feedImageUrl: post.feedImageUrl,
                   feedBrandColor: post.feedBrandColor,
                   publishedAt: post.publishedAt,
-                  author: post.author,
                   isStarred: post.isStarred,
                   isPaywalled: post.isPaywalled,
                 });
               }}
             >
-              <div className="flex gap-4">
+              {/* Blog name + thumbnail */}
+              <div className="flex items-start gap-4">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <button
-                      className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFilterFeed(post.feedId);
-                      }}
-                    >
-                      <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
-                      <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-accent" />
-                    </button>
-                    <span className="text-xs text-muted">·</span>
-                    <span className="text-xs text-muted whitespace-nowrap">
-                      {formatDate(post.publishedAt)}
-                    </span>
-                    {post.wordCount && post.wordCount > 0 && (
-                      <>
-                        <span className="text-xs text-muted">·</span>
-                        <span className="text-xs text-muted whitespace-nowrap">
-                          {estimateReadingTime(post.wordCount)}
-                        </span>
-                      </>
-                    )}
-                    {post.isPaywalled && (
-                      <span
-                        title="Paywalled"
-                        style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center" }}
-                      >
-                        <LockSimple size={14} weight="fill" />
-                      </span>
-                    )}
-                  </div>
+                  <button
+                    className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5 mb-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFilterFeed(post.feedId);
+                    }}
+                  >
+                    <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
+                    <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-accent" />
+                  </button>
 
                   <h3
-                    className="font-semibold text-base lg:text-lg leading-snug mb-2 group-hover:text-accent transition-colors line-clamp-2"
+                    className="font-semibold text-base lg:text-lg leading-snug mb-1.5 group-hover:text-accent transition-colors line-clamp-2"
                     style={{ fontFamily: "var(--font-serif)" }}
                   >
                     {decodeEntities(post.title)}
                   </h3>
 
                   {post.content && (
-                    <p className="text-sm text-secondary leading-relaxed line-clamp-2">
+                    <p className="text-sm text-secondary leading-relaxed line-clamp-2 mb-3">
                       {decodeEntities(post.content.slice(0, 150))}
                     </p>
                   )}
-
-                  {post.author && post.author !== "[object Object]" && (
-                    <p className="text-xs text-muted mt-2">by {post.author}</p>
-                  )}
                 </div>
 
-                {(post.imageUrl || post.feedImageUrl) && (
-                  <div className="flex-shrink-0">
-                    <img
-                      src={post.imageUrl || post.feedImageUrl}
-                      alt=""
-                      className={`rounded-lg object-cover ${
-                        post.imageUrl
-                          ? "w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28"
-                          : "w-10 h-10 sm:w-12 sm:h-12"
-                      }`}
-                      loading="lazy"
-                    />
-                  </div>
+                {post.imageUrl && (
+                  <img
+                    src={post.imageUrl}
+                    alt=""
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover flex-shrink-0"
+                    loading="lazy"
+                  />
                 )}
               </div>
 
-              <div className="flex items-center justify-between card-divider">
+              {/* Meta row: date · read time · paywall on left, star on right */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <span>{formatDate(post.publishedAt)}</span>
+                  {post.wordCount && post.wordCount > 0 && (
+                    <>
+                      <span>·</span>
+                      <span>{estimateReadingTime(post.wordCount)}</span>
+                    </>
+                  )}
+                  {post.isPaywalled && (
+                    <>
+                      <span>·</span>
+                      <LockSimple size={12} weight="fill" />
+                    </>
+                  )}
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleStar({ postId: post._id });
                   }}
-                  className="p-1.5 rounded-lg transition-colors"
+                  className="p-1 rounded-lg transition-colors"
                   style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
                 >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill={post.isStarred ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
+                  <Star size={16} weight={post.isStarred ? "fill" : "regular"} />
                 </button>
-
-                {!post.isRead && (
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--accent)" }} />
-                )}
               </div>
             </div>
           </article>
