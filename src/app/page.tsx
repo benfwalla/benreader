@@ -461,10 +461,11 @@ function Header({
     setRefreshing(false);
   };
 
-  const handleMarkAllRead = () => {
+  const handleMarkAll = (unread?: boolean) => {
     const args: Record<string, unknown> = {};
     if (filter.type === "feed") args.feedId = filter.feedId;
     if (filter.type === "folder") args.folderId = filter.folderId;
+    if (unread) args.unread = true;
     markAllRead(args as any);
   };
 
@@ -492,8 +493,11 @@ function Header({
         {title}
       </h2>
 
-      <button onClick={handleMarkAllRead} className="btn-outline">
-        Mark all read
+      <button onClick={() => handleMarkAll()} className="btn-outline">
+        Mark read
+      </button>
+      <button onClick={() => handleMarkAll(true)} className="btn-outline">
+        Mark unread
       </button>
 
       <button

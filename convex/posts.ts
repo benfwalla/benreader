@@ -107,9 +107,11 @@ export const markAllRead = mutation({
   args: {
     feedId: v.optional(v.id("brFeeds")),
     folderId: v.optional(v.id("brFolders")),
+    unread: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const markAsRead = !args.unread;
     let posts;
 
     if (args.feedId) {
@@ -132,8 +134,8 @@ export const markAllRead = mutation({
 
     await Promise.all(
       posts
-        .filter((p) => !p.isRead)
-        .map((p) => ctx.db.patch(p._id, { isRead: true }))
+        .filter((p) => p.isRead !== markAsRead)
+        .map((p) => ctx.db.patch(p._id, { isRead: markAsRead }))
     );
 
     return null;
