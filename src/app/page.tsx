@@ -43,6 +43,7 @@ export default function Home() {
   const [showImport, setShowImport] = useState(false);
   const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
   const folders = useQuery(api.folders.list, {});
+  const markAllRead = useMutation(api.posts.markAllRead);
 
   // Default to "Blogs" folder
   useEffect(() => {
@@ -84,6 +85,18 @@ export default function Home() {
           onAddFeed={() => setShowAddFeed(true)}
           onImport={() => setShowImport(true)}
           onSettings={() => setShowSettings(true)}
+          onMarkRead={() => {
+            const args: Record<string, unknown> = {};
+            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
+            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
+            markAllRead(args as any);
+          }}
+          onMarkUnread={() => {
+            const args: Record<string, unknown> = { unread: true };
+            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
+            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
+            markAllRead(args as any);
+          }}
         />
       </aside>
 
@@ -321,12 +334,16 @@ function Sidebar({
   onAddFeed,
   onImport,
   onSettings,
+  onMarkRead,
+  onMarkUnread,
 }: {
   filter: Filter;
   setFilter: (f: Filter) => void;
   onAddFeed: () => void;
   onImport: () => void;
   onSettings: () => void;
+  onMarkRead: () => void;
+  onMarkUnread: () => void;
 }) {
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
@@ -395,6 +412,14 @@ function Sidebar({
           + Add Feed
         </button>
         <div style={{ display: "flex", gap: 4 }}>
+          <button onClick={onMarkRead} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
+            Mark read
+          </button>
+          <button onClick={onMarkUnread} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
+            Mark unread
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
           <button onClick={onImport} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
             Import OPML
           </button>
@@ -446,7 +471,6 @@ function Header({
   filter: Filter;
 }) {
   const refreshAll = useAction(api.feedActions.refreshAll);
-  const markAllRead = useMutation(api.posts.markAllRead);
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
   const [refreshing, setRefreshing] = useState(false);
@@ -459,14 +483,6 @@ function Header({
       console.error(e);
     }
     setRefreshing(false);
-  };
-
-  const handleMarkAll = (unread?: boolean) => {
-    const args: Record<string, unknown> = {};
-    if (filter.type === "feed") args.feedId = filter.feedId;
-    if (filter.type === "folder") args.folderId = filter.folderId;
-    if (unread) args.unread = true;
-    markAllRead(args as any);
   };
 
   let title = "All Posts";
@@ -492,13 +508,6 @@ function Header({
       <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>
         {title}
       </h2>
-
-      <button onClick={() => handleMarkAll()} className="btn-outline">
-        Mark read
-      </button>
-      <button onClick={() => handleMarkAll(true)} className="btn-outline">
-        Mark unread
-      </button>
 
       <button
         onClick={handleRefresh}
