@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { useState, useRef, useEffect, forwardRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import DOMPurify from "dompurify";
 import {
   House,
@@ -42,8 +42,6 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
-  const scrollPositionRef = useRef(0);
-  const postListScrollRef = useRef<HTMLDivElement>(null);
   const folders = useQuery(api.folders.list, {});
   const markAllRead = useMutation(api.posts.markAllRead);
 
@@ -104,39 +102,25 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
-        {readerPost ? (
+        {readerPost && (
           <ArticleReader
             post={readerPost}
-            onClose={() => {
-              setReaderPost(null);
-              // Restore scroll position after the post list re-renders
-              requestAnimationFrame(() => {
-                postListScrollRef.current?.scrollTo(0, scrollPositionRef.current);
-              });
+            onClose={() => setReaderPost(null)}
+          />
+        )}
+        <div className={`flex-1 flex flex-col min-w-0 ${readerPost ? "hidden" : ""}`}>
+          <Header
+            onMenuClick={() => setSidebarOpen(true)}
+            filter={activeFilter}
+          />
+          <PostList
+            filter={activeFilter}
+            onOpenPost={setReaderPost}
+            onFilterFeed={(feedId) => {
+              setFilter({ type: "feed", feedId });
             }}
           />
-        ) : (
-          <>
-            <Header
-              onMenuClick={() => setSidebarOpen(true)}
-              filter={activeFilter}
-            />
-            <PostList
-              ref={postListScrollRef}
-              filter={activeFilter}
-              onOpenPost={(post) => {
-                // Save scroll position before opening article
-                if (postListScrollRef.current) {
-                  scrollPositionRef.current = postListScrollRef.current.scrollTop;
-                }
-                setReaderPost(post);
-              }}
-              onFilterFeed={(feedId) => {
-                setFilter({ type: "feed", feedId });
-              }}
-            />
-          </>
-        )}
+        </div>
       </main>
 
       {/* Bottom nav on mobile */}
@@ -542,11 +526,15 @@ function Header({
 
 /* ──────────────────── Post List ──────────────────── */
 
-const PostList = forwardRef<HTMLDivElement, {
+function PostList({
+  filter,
+  onOpenPost,
+  onFilterFeed,
+}: {
   filter: Filter;
   onOpenPost: (post: ReaderPost) => void;
   onFilterFeed: (feedId: Id<"brFeeds">) => void;
-}>(function PostList({ filter, onOpenPost, onFilterFeed }, ref) {
+}) {
   const posts = useQuery(api.posts.list, {
     feedId: filter.type === "feed" ? filter.feedId : undefined,
     folderId: filter.type === "folder" ? filter.folderId : undefined,
@@ -575,7 +563,7 @@ const PostList = forwardRef<HTMLDivElement, {
   }
 
   return (
-    <div ref={ref} className="flex-1 overflow-y-auto pb-28 lg:pb-4">
+    <div className="flex-1 overflow-y-auto pb-28 lg:pb-4">
       <div className="feed-list">
         {posts.map((post, i) => (
           <article key={post._id} className="animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
@@ -669,7 +657,7 @@ const PostList = forwardRef<HTMLDivElement, {
       </div>
     </div>
   );
-});
+}
 
 /* ──────────────────── Modals ──────────────────── */
 
