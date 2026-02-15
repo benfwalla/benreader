@@ -55,14 +55,23 @@ export const list = query({
         .take(limit);
     }
 
-    // If filtering by folder, get feeds in that folder first
+    // If filtering by folder, get feeds in that folder first, then query per-feed
     if (args.folderId && !args.feedId && !args.starredOnly) {
       const feeds = await ctx.db
         .query("brFeeds")
         .withIndex("by_folder", (q) => q.eq("folderId", args.folderId!))
         .collect();
-      const feedIds = new Set(feeds.map((f) => f._id));
-      posts = posts.filter((p) => feedIds.has(p.feedId));
+      const allPosts = [];
+      for (const feed of feeds) {
+        const feedPosts = await ctx.db
+          .query("brPosts")
+          .withIndex("by_feed", (q) => q.eq("feedId", feed._id))
+          .order("desc")
+          .collect();
+        allPosts.push(...feedPosts);
+      }
+      allPosts.sort((a, b) => b.publishedAt - a.publishedAt);
+      posts = allPosts.slice(0, limit);
     }
 
     // Attach feed titles
