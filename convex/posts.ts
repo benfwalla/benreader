@@ -47,16 +47,8 @@ export const list = query({
         .withIndex("by_feed", (q) => q.eq("feedId", args.feedId!))
         .order("desc")
         .take(limit);
-    } else {
-      posts = await ctx.db
-        .query("brPosts")
-        .withIndex("by_publishedAt")
-        .order("desc")
-        .take(limit);
-    }
-
-    // If filtering by folder, get feeds in that folder first, then query per-feed
-    if (args.folderId && !args.feedId && !args.starredOnly) {
+    } else if (args.folderId) {
+      // Query per-feed within the folder
       const feeds = await ctx.db
         .query("brFeeds")
         .withIndex("by_folder", (q) => q.eq("folderId", args.folderId!))
@@ -67,11 +59,17 @@ export const list = query({
           .query("brPosts")
           .withIndex("by_feed", (q) => q.eq("feedId", feed._id))
           .order("desc")
-          .collect();
+          .take(limit);
         allPosts.push(...feedPosts);
       }
       allPosts.sort((a, b) => b.publishedAt - a.publishedAt);
       posts = allPosts.slice(0, limit);
+    } else {
+      posts = await ctx.db
+        .query("brPosts")
+        .withIndex("by_publishedAt")
+        .order("desc")
+        .take(limit);
     }
 
     // Attach feed titles
