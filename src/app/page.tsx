@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import DOMPurify from "dompurify";
 import {
   House,
@@ -42,6 +42,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
+  const savedScrollTop = useRef(0);
   const folders = useQuery(api.folders.list, {});
   const markAllRead = useMutation(api.posts.markAllRead);
 
@@ -102,25 +103,29 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
-        {readerPost && (
+        {readerPost ? (
           <ArticleReader
             post={readerPost}
             onClose={() => setReaderPost(null)}
           />
+        ) : (
+          <>
+            <Header
+              onMenuClick={() => setSidebarOpen(true)}
+              filter={activeFilter}
+            />
+            <PostList
+              filter={activeFilter}
+              onOpenPost={(post) => {
+                setReaderPost(post);
+              }}
+              onFilterFeed={(feedId) => {
+                setFilter({ type: "feed", feedId });
+              }}
+              savedScrollTop={savedScrollTop}
+            />
+          </>
         )}
-        <div className="flex-1 flex flex-col min-w-0" style={readerPost ? { height: 0, overflow: 'hidden', flex: 'none', visibility: 'hidden' } : undefined}>
-          <Header
-            onMenuClick={() => setSidebarOpen(true)}
-            filter={activeFilter}
-          />
-          <PostList
-            filter={activeFilter}
-            onOpenPost={setReaderPost}
-            onFilterFeed={(feedId) => {
-              setFilter({ type: "feed", feedId });
-            }}
-          />
-        </div>
       </main>
 
       {/* Bottom nav on mobile */}
@@ -530,10 +535,12 @@ function PostList({
   filter,
   onOpenPost,
   onFilterFeed,
+  savedScrollTop,
 }: {
   filter: Filter;
   onOpenPost: (post: ReaderPost) => void;
   onFilterFeed: (feedId: Id<"brFeeds">) => void;
+  savedScrollTop: React.MutableRefObject<number>;
 }) {
   const posts = useQuery(api.posts.list, {
     feedId: filter.type === "feed" ? filter.feedId : undefined,
@@ -544,6 +551,21 @@ function PostList({
 
   const markRead = useMutation(api.posts.markRead);
   const toggleStar = useMutation(api.posts.toggleStar);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Save scroll position continuously
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) {
+      savedScrollTop.current = scrollRef.current.scrollTop;
+    }
+  }, [savedScrollTop]);
+
+  // Restore scroll position after posts load
+  useEffect(() => {
+    if (posts && posts.length > 0 && scrollRef.current && savedScrollTop.current > 0) {
+      scrollRef.current.scrollTop = savedScrollTop.current;
+    }
+  }, [posts, savedScrollTop]);
 
   if (!posts) {
     return (
@@ -563,7 +585,7 @@ function PostList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto pb-28 lg:pb-4">
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-28 lg:pb-4">
       <div className="feed-list">
         {posts.map((post, i) => (
           <article key={post._id} className="animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
