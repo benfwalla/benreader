@@ -581,7 +581,7 @@ function PostList({ filter, onOpenPost, onFilterFeed, savedScrollTop }: {
   if (posts.length === 0) return <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet. Add some feeds or hit refresh!</p></div>;
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-44 lg:pb-4">
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
       <div className="feed-list">
         {posts.map((post, i) => (
           <article key={post._id} className={i < 20 ? "animate-fade-in" : ""} style={i < 20 ? { animationDelay: `${i * 30}ms` } : undefined}>

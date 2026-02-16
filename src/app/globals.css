@@ -103,6 +103,7 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 48rem;
   margin: 0 auto;
   padding: 16px;
+  padding-bottom: 200px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -111,6 +112,7 @@ h1, h2, h3, h4, h5, h6 {
 @media (min-width: 1024px) {
   .feed-list {
     padding: 16px 24px;
+    padding-bottom: 24px;
   }
 }
 
