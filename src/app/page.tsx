@@ -14,6 +14,8 @@ import {
   LockSimple,
   ArrowLeft,
   ArrowSquareOut,
+  Article,
+  ClockCounterClockwise,
 } from "@phosphor-icons/react";
 
 type Filter =
@@ -394,26 +396,26 @@ function Sidebar({
             letterSpacing: "-0.01em",
           }}
         >
-          📖 BenReader
+          BenReader
         </h1>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 12, paddingBottom: 12 }}>
         <SidebarItem
           label="All Posts"
-          icon="📚"
+          icon={<Article size={16} />}
           active={filter.type === "all"}
           onClick={() => setFilter({ type: "all" })}
         />
         <SidebarItem
           label="Starred"
-          icon="⭐"
+          icon={<Star size={16} />}
           active={filter.type === "starred"}
           onClick={() => setFilter({ type: "starred" })}
         />
         <SidebarItem
           label="History"
-          icon="🕐"
+          icon={<ClockCounterClockwise size={16} />}
           active={filter.type === "history"}
           onClick={() => setFilter({ type: "history" })}
         />
@@ -478,7 +480,7 @@ function SidebarItem({
   onClick,
 }: {
   label: string;
-  icon: string;
+  icon: React.ReactNode;
   count?: number;
   active: boolean;
   onClick: () => void;
@@ -488,7 +490,7 @@ function SidebarItem({
       onClick={onClick}
       className={`sidebar-item ${active ? "active" : ""}`}
     >
-      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span style={{ fontSize: 16, display: "flex", alignItems: "center" }}>{icon}</span>
       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </span>
