@@ -636,7 +636,7 @@ function PostList({
   }
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-36 lg:pb-4">
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-44 lg:pb-4">
       <div className="feed-list">
         {posts.map((post, i) => (
           <article key={post._id} className={i < 20 ? "animate-fade-in" : ""} style={i < 20 ? { animationDelay: `${i * 30}ms` } : undefined}>
