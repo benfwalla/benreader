@@ -22,6 +22,7 @@ export const list = query({
       isRead: v.boolean(),
       isStarred: v.boolean(),
       isPaywalled: v.boolean(),
+      readAt: v.optional(v.number()),
       guid: v.string(),
       author: v.optional(v.string()),
       feedTitle: v.string(),

@@ -92,8 +92,8 @@ h1, h2, h3, h4, h5, h6 {
 .post-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
-.post-card.read {
-  opacity: 0.6;
+.post-card.read h3 {
+  font-weight: 400;
 }
 
 @media (min-width: 1024px) {
