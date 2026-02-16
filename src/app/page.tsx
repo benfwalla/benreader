@@ -261,14 +261,8 @@ function ArticleReader({
         <article className="reader-article">
           {/* Article meta */}
           <div className="reader-meta">
-            <h1 className="reader-title">{decodeEntities(post.title)}</h1>
+            <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-title hover:underline">{decodeEntities(post.title)}</a>
             <div className="reader-byline">
-              {article?.byline && (
-                <>
-                  <span>{article.byline}</span>
-                  <span className="text-muted">·</span>
-                </>
-              )}
               <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-muted" />
               <span className="text-muted">·</span>
               <time className="text-muted">{formatDateLong(post.publishedAt)}</time>
