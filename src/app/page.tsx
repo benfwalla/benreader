@@ -195,7 +195,17 @@ export default function Home() {
       {/* Modals */}
       {showAddFeed && <AddFeedModal onClose={() => setShowAddFeed(false)} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} onMarkRead={() => {
+            const args: Record<string, unknown> = {};
+            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
+            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
+            markAllRead(args as any);
+          }} onMarkUnread={() => {
+            const args: Record<string, unknown> = { unread: true };
+            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
+            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
+            markAllRead(args as any);
+          }} />}
     </div>
   );
 }
@@ -462,14 +472,6 @@ function Sidebar({
         <button onClick={onAddFeed} className="btn-accent" style={{ padding: "8px 12px", fontSize: 14 }}>
           + Add Feed
         </button>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button onClick={onMarkRead} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
-            Mark read
-          </button>
-          <button onClick={onMarkUnread} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
-            Mark unread
-          </button>
-        </div>
         <div style={{ display: "flex", gap: 4 }}>
           <button onClick={onImport} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
             Import OPML
@@ -826,7 +828,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({ onClose, onMarkRead, onMarkUnread }: { onClose: () => void; onMarkRead: () => void; onMarkUnread: () => void }) {
   const bgColor = useQuery(api.settings.get, { key: "bgColor" });
   const setSetting = useMutation(api.settings.set);
 
@@ -863,6 +865,17 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                 {c.name}
               </button>
             ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Read Status</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { onMarkRead(); onClose(); }} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
+              Mark all read
+            </button>
+            <button onClick={() => { onMarkUnread(); onClose(); }} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
+              Mark all unread
+            </button>
           </div>
         </div>
       </div>
