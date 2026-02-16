@@ -16,6 +16,8 @@ import {
   ArrowSquareOut,
   Article,
   ClockCounterClockwise,
+  CaretRight,
+  CaretDown,
 } from "@phosphor-icons/react";
 
 type Filter =
@@ -117,10 +119,33 @@ function Modal({ onClose, title, children }: { onClose: () => void; title: strin
   );
 }
 
+/* ──────────────────── URL Routing ──────────────────── */
+
+function filterToPath(f: Filter): string {
+  switch (f.type) {
+    case "all": return "/all";
+    case "starred": return "/starred";
+    case "history": return "/history";
+    case "folder": return `/folder/${f.folderId}`;
+    case "feed": return `/feed/${f.feedId}`;
+  }
+}
+
+function pathToFilter(path: string): Filter | null {
+  if (path === "/all" || path === "/") return { type: "all" };
+  if (path === "/starred") return { type: "starred" };
+  if (path === "/history") return { type: "history" };
+  const folderMatch = path.match(/^\/folder\/(.+)$/);
+  if (folderMatch) return { type: "folder", folderId: folderMatch[1] as Id<"brFolders"> };
+  const feedMatch = path.match(/^\/feed\/(.+)$/);
+  if (feedMatch) return { type: "feed", feedId: feedMatch[1] as Id<"brFeeds"> };
+  return null;
+}
+
 /* ──────────────────── Main App ──────────────────── */
 
 export default function Home() {
-  const [filter, setFilter] = useState<Filter | null>(null);
+  const [filter, setFilterState] = useState<Filter | null>(() => pathToFilter(typeof window !== "undefined" ? window.location.pathname : "/"));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -131,10 +156,23 @@ export default function Home() {
   const folders = useQuery(api.folders.list, {});
   const markAllRead = useMutation(api.posts.markAllRead);
 
+  const setFilter = useCallback((f: Filter) => {
+    setFilterState(f);
+    window.history.pushState(null, "", filterToPath(f));
+  }, []);
+
   useEffect(() => { readerPostRef.current = readerPost; }, [readerPost]);
 
   useEffect(() => {
-    const onPop = (e: PopStateEvent) => setReaderPost(e.state?.post ?? null);
+    const onPop = (e: PopStateEvent) => {
+      if (e.state?.post) {
+        setReaderPost(e.state.post);
+      } else {
+        setReaderPost(null);
+        const f = pathToFilter(window.location.pathname);
+        if (f) setFilterState(f);
+      }
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -148,11 +186,13 @@ export default function Home() {
     if (readerPostRef.current) window.history.back();
   }, []);
 
-  // Default to "Blogs" folder
+  // Default to "Blogs" folder if no URL match
   useEffect(() => {
     if (filter === null && folders) {
       const blogs = folders.find((f) => f.name.toLowerCase() === "blogs");
-      setFilter(blogs ? { type: "folder", folderId: blogs._id } : { type: "all" });
+      const f = blogs ? { type: "folder" as const, folderId: blogs._id } : { type: "all" as const };
+      setFilterState(f);
+      window.history.replaceState(null, "", filterToPath(f));
     }
   }, [folders, filter]);
 
@@ -182,7 +222,6 @@ export default function Home() {
           setFilter={(f) => {
             setFilter(f);
             setSidebarOpen(false);
-            if (readerPost) window.history.replaceState(null, "", "/");
             setReaderPost(null);
           }}
           onAddFeed={() => setShowAddFeed(true)}
@@ -416,28 +455,35 @@ function Sidebar({
 
         <div className="sidebar-section-label">Folders</div>
 
-        {folders?.map((folder) => (
-          <div key={folder._id}>
-            <SidebarItem
-              label={folder.name}
-              icon="📁"
-              count={getFeedsInFolder(folder._id).length}
-              active={filter.type === "folder" && filter.folderId === folder._id}
-              onClick={() => { setFilter({ type: "folder", folderId: folder._id }); toggleFolder(folder._id); }}
-            />
-            {expandedFolders.has(folder._id) &&
-              getFeedsInFolder(folder._id).map((feed) => (
-                <button
-                  key={feed._id}
-                  onClick={() => setFilter({ type: "feed", feedId: feed._id })}
-                  className="sidebar-sub-item"
+        {folders?.map((folder) => {
+          const expanded = expandedFolders.has(folder._id);
+          const isActive = filter.type === "folder" && filter.folderId === folder._id;
+          return (
+            <div key={folder._id}>
+              <button className={`sidebar-item ${isActive ? "active" : ""}`} onClick={() => setFilter({ type: "folder", folderId: folder._id })}>
+                <span
+                  onClick={(e) => { e.stopPropagation(); toggleFolder(folder._id); }}
+                  style={{ display: "flex", alignItems: "center", cursor: "pointer", padding: 2 }}
                 >
-                  <BlogIcon htmlUrl={feed.htmlUrl} imageUrl={feed.imageUrl} size={14} />
-                  <span className="truncate">{feed.title}</span>
-                </button>
-              ))}
-          </div>
-        ))}
+                  {expanded ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                </span>
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{folder.name}</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{getFeedsInFolder(folder._id).length}</span>
+              </button>
+              {expanded &&
+                getFeedsInFolder(folder._id).map((feed) => (
+                  <button
+                    key={feed._id}
+                    onClick={() => setFilter({ type: "feed", feedId: feed._id })}
+                    className="sidebar-sub-item"
+                  >
+                    <BlogIcon htmlUrl={feed.htmlUrl} imageUrl={feed.imageUrl} size={14} />
+                    <span className="truncate">{feed.title}</span>
+                  </button>
+                ))}
+            </div>
+          );
+        })}
       </div>
 
       <div className="sidebar-footer">

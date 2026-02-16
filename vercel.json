@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/(all|starred|history|folder/.*|feed/.*)", "destination": "/" }
+  ]
+}
