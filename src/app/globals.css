@@ -116,6 +116,17 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Slide reader overlay */
+.slide-reader {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background-color: var(--bg-primary);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
 /* Header bar */
 .header-bar {
   position: sticky;

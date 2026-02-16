@@ -151,6 +151,8 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
+  const [readerVisible, setReaderVisible] = useState(false);
+  const [pendingClose, setPendingClose] = useState(false);
   const savedScrollTop = useRef(0);
   const readerPostRef = useRef<ReaderPost | null>(null);
   const folders = useQuery(api.folders.list, {});
@@ -167,8 +169,11 @@ export default function Home() {
     const onPop = (e: PopStateEvent) => {
       if (e.state?.post) {
         setReaderPost(e.state.post);
+        requestAnimationFrame(() => setReaderVisible(true));
       } else {
+        setReaderVisible(false);
         setReaderPost(null);
+        setPendingClose(false);
         const f = pathToFilter(window.location.pathname);
         if (f) setFilterState(f);
       }
@@ -180,11 +185,24 @@ export default function Home() {
   const openPost = useCallback((post: ReaderPost) => {
     window.history.pushState({ post }, "", `?post=${post._id}`);
     setReaderPost(post);
+    requestAnimationFrame(() => setReaderVisible(true));
   }, []);
 
   const closePost = useCallback(() => {
-    if (readerPostRef.current) window.history.back();
+    if (!readerPostRef.current) return;
+    setReaderVisible(false);
+    setPendingClose(true);
   }, []);
+
+  // After slide-out animation ends, actually go back
+  useEffect(() => {
+    if (!pendingClose) return;
+    const t = setTimeout(() => {
+      setPendingClose(false);
+      window.history.back();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [pendingClose]);
 
   // Default to "Blogs" folder if no URL match
   useEffect(() => {
@@ -230,19 +248,23 @@ export default function Home() {
         />
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
-        {readerPost ? (
-          <ArticleReader post={readerPost} onClose={closePost} />
-        ) : (
-          <>
-            <Header onMenuClick={() => setSidebarOpen(true)} filter={activeFilter} />
-            <PostList
-              filter={activeFilter}
-              onOpenPost={openPost}
-              onFilterFeed={(feedId) => setFilter({ type: "feed", feedId })}
-              savedScrollTop={savedScrollTop}
-            />
-          </>
+      <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
+        <div className={readerPost ? "pointer-events-none" : ""} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <Header onMenuClick={() => setSidebarOpen(true)} filter={activeFilter} />
+          <PostList
+            filter={activeFilter}
+            onOpenPost={openPost}
+            onFilterFeed={(feedId) => setFilter({ type: "feed", feedId })}
+            savedScrollTop={savedScrollTop}
+          />
+        </div>
+        {readerPost && (
+          <div
+            className="slide-reader"
+            style={{ transform: readerVisible ? "translateX(0)" : "translateX(100%)" }}
+          >
+            <ArticleReader post={readerPost} onClose={closePost} />
+          </div>
         )}
       </main>
 
