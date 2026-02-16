@@ -25,6 +25,7 @@ export default defineSchema({
     imageUrl: v.optional(v.string()),
     publishedAt: v.number(),
     isRead: v.boolean(),
+    readAt: v.optional(v.number()),
     isStarred: v.boolean(),
     isPaywalled: v.boolean(),
     guid: v.string(),
@@ -33,7 +34,7 @@ export default defineSchema({
   })
     .index("by_feed", ["feedId", "publishedAt"])
     .index("by_starred", ["isStarred", "publishedAt"])
-    .index("by_read", ["isRead", "publishedAt"])
+    .index("by_read", ["isRead", "readAt"])
     .index("by_publishedAt", ["publishedAt"])
     .index("by_guid", ["guid"]),
 

@@ -100,7 +100,7 @@ export const markRead = mutation({
   args: { postId: v.id("brPosts") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.postId, { isRead: true });
+    await ctx.db.patch(args.postId, { isRead: true, readAt: Date.now() });
     return null;
   },
 });
@@ -149,7 +149,7 @@ export const markAllRead = mutation({
     await Promise.all(
       posts
         .filter((p) => p.isRead !== markAsRead)
-        .map((p) => ctx.db.patch(p._id, { isRead: markAsRead }))
+        .map((p) => ctx.db.patch(p._id, { isRead: markAsRead, readAt: markAsRead ? Date.now() : undefined }))
     );
 
     return null;
