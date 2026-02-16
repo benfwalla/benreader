@@ -584,7 +584,7 @@ function PostList({ filter, onOpenPost, onFilterFeed, savedScrollTop }: {
     <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
       <div className="feed-list">
         {posts.map((post, i) => (
-          <article key={post._id} className={i < 20 ? "animate-fade-in" : ""} style={i < 20 ? { animationDelay: `${i * 30}ms` } : undefined}>
+          <article key={post._id}>
             <div
               className="post-card group"
               onClick={() => {
