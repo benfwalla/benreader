@@ -38,6 +38,87 @@ type ReaderPost = {
   isPaywalled: boolean;
 };
 
+/* ──────────────────── Helpers ──────────────────── */
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatDateLong(ts: number): string {
+  return new Date(ts).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function readingTime(wordCount: number): string {
+  return `${Math.max(1, Math.round(wordCount / 238))} min read`;
+}
+
+function BlogIcon({ htmlUrl, imageUrl, size = 16 }: { htmlUrl?: string; imageUrl?: string; size?: number }) {
+  const src =
+    imageUrl ||
+    (htmlUrl ? `https://www.google.com/s2/favicons?domain=${new URL(htmlUrl).hostname}&sz=${size * 2}` : undefined);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      className="rounded-sm object-cover flex-shrink-0"
+      style={{ width: size, height: size }}
+      loading="lazy"
+      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+    />
+  );
+}
+
+function FeedName({ name, color, className }: { name: string; color?: string; className?: string }) {
+  return <span className={className} style={color ? { color } : undefined}>{name}</span>;
+}
+
+/* ──────────────────── Modal ──────────────────── */
+
+function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative modal-card animate-fade-in">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold" style={{ fontFamily: "var(--font-serif)" }}>{title}</h3>
+          <button onClick={onClose} className="text-muted transition-colors">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────── Main App ──────────────────── */
+
 export default function Home() {
   const [filter, setFilter] = useState<Filter | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -50,62 +131,47 @@ export default function Home() {
   const folders = useQuery(api.folders.list, {});
   const markAllRead = useMutation(api.posts.markAllRead);
 
-  // Sync ref with state for popstate handler
-  useEffect(() => {
-    readerPostRef.current = readerPost;
-  }, [readerPost]);
+  useEffect(() => { readerPostRef.current = readerPost; }, [readerPost]);
 
-  // Handle browser back/forward
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      if (e.state?.post) {
-        setReaderPost(e.state.post);
-      } else {
-        setReaderPost(null);
-      }
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    const onPop = (e: PopStateEvent) => setReaderPost(e.state?.post ?? null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Open a post with history entry
   const openPost = useCallback((post: ReaderPost) => {
     window.history.pushState({ post }, "", `?post=${post._id}`);
     setReaderPost(post);
   }, []);
 
-  // Close post and go back in history
   const closePost = useCallback(() => {
-    if (readerPostRef.current) {
-      window.history.back();
-    }
+    if (readerPostRef.current) window.history.back();
   }, []);
 
   // Default to "Blogs" folder
   useEffect(() => {
     if (filter === null && folders) {
-      const blogsFolder = folders.find((f) => f.name.toLowerCase() === "blogs");
-      if (blogsFolder) {
-        setFilter({ type: "folder", folderId: blogsFolder._id });
-      } else {
-        setFilter({ type: "all" });
-      }
+      const blogs = folders.find((f) => f.name.toLowerCase() === "blogs");
+      setFilter(blogs ? { type: "folder", folderId: blogs._id } : { type: "all" });
     }
   }, [folders, filter]);
 
   const activeFilter = filter ?? ({ type: "all" } as Filter);
 
+  const makeMarkArgs = (unread?: boolean) => {
+    const args: Record<string, unknown> = {};
+    if (unread) args.unread = true;
+    if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
+    if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
+    return args;
+  };
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/30 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-40 w-72 sidebar flex flex-col transition-transform duration-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
@@ -116,55 +182,31 @@ export default function Home() {
           setFilter={(f) => {
             setFilter(f);
             setSidebarOpen(false);
-            if (readerPost) {
-              window.history.replaceState(null, "", "/");
-            }
+            if (readerPost) window.history.replaceState(null, "", "/");
             setReaderPost(null);
           }}
           onAddFeed={() => setShowAddFeed(true)}
           onImport={() => setShowImport(true)}
           onSettings={() => setShowSettings(true)}
-          onMarkRead={() => {
-            const args: Record<string, unknown> = {};
-            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
-            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
-            markAllRead(args as any);
-          }}
-          onMarkUnread={() => {
-            const args: Record<string, unknown> = { unread: true };
-            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
-            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
-            markAllRead(args as any);
-          }}
         />
       </aside>
 
-      {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
         {readerPost ? (
-          <ArticleReader
-            post={readerPost}
-            onClose={closePost}
-          />
+          <ArticleReader post={readerPost} onClose={closePost} />
         ) : (
           <>
-            <Header
-              onMenuClick={() => setSidebarOpen(true)}
-              filter={activeFilter}
-            />
+            <Header onMenuClick={() => setSidebarOpen(true)} filter={activeFilter} />
             <PostList
               filter={activeFilter}
               onOpenPost={openPost}
-              onFilterFeed={(feedId) => {
-                setFilter({ type: "feed", feedId });
-              }}
+              onFilterFeed={(feedId) => setFilter({ type: "feed", feedId })}
               savedScrollTop={savedScrollTop}
             />
           </>
         )}
       </main>
 
-      {/* Bottom nav on mobile */}
       {!readerPost && (
         <nav className="fixed bottom-0 left-0 right-0 bottom-nav lg:hidden z-20">
           <button
@@ -181,49 +223,34 @@ export default function Home() {
             <Star size={22} weight={activeFilter.type === "starred" ? "fill" : "regular"} />
             Starred
           </button>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="bottom-nav-item"
-          >
+          <button onClick={() => setSidebarOpen(true)} className="bottom-nav-item">
             <SquaresFour size={22} />
             Folders
           </button>
         </nav>
       )}
 
-      {/* Modals */}
       {showAddFeed && <AddFeedModal onClose={() => setShowAddFeed(false)} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} onMarkRead={() => {
-            const args: Record<string, unknown> = {};
-            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
-            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
-            markAllRead(args as any);
-          }} onMarkUnread={() => {
-            const args: Record<string, unknown> = { unread: true };
-            if (activeFilter.type === "feed") args.feedId = activeFilter.feedId;
-            if (activeFilter.type === "folder") args.folderId = activeFilter.folderId;
-            markAllRead(args as any);
-          }} />}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onMarkRead={() => markAllRead(makeMarkArgs() as any)}
+          onMarkUnread={() => markAllRead(makeMarkArgs(true) as any)}
+        />
+      )}
     </div>
   );
 }
 
 /* ──────────────────── Article Reader ──────────────────── */
 
-function ArticleReader({
-  post,
-  onClose,
-}: {
-  post: ReaderPost;
-  onClose: () => void;
-}) {
+function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => void }) {
   const fetchArticle = useAction(api.articles.fetch);
   const toggleStar = useMutation(api.posts.toggleStar);
   const [article, setArticle] = useState<{
     title: string;
     content: string;
-    byline?: string;
     siteName?: string;
     length?: number;
   } | null>(null);
@@ -238,41 +265,21 @@ function ArticleReader({
     setArticle(null);
 
     fetchArticle({ url: post.url })
-      .then((result) => {
+      .then((r) => {
         if (cancelled) return;
-        if (result) {
-          setArticle({
-            title: result.title,
-            content: result.content,
-            byline: result.byline ?? undefined,
-            siteName: result.siteName ?? undefined,
-            length: result.length,
-          });
-        } else {
-          setError(true);
-        }
+        if (r) setArticle({ title: r.title, content: r.content, siteName: r.siteName ?? undefined, length: r.length });
+        else setError(true);
         setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setError(true);
-          setLoading(false);
-        }
-      });
+      .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [post.url, fetchArticle]);
 
-  // Scroll to top when article loads
-  useEffect(() => {
-    contentRef.current?.scrollTo(0, 0);
-  }, [article]);
+  useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [article]);
 
   return (
     <div className="flex flex-col h-full">
-      {/* Reader header */}
       <header className="reader-header">
         <button onClick={onClose} className="reader-back-btn">
           <ArrowLeft size={20} />
@@ -280,7 +287,7 @@ function ArticleReader({
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <BlogIcon htmlUrl={post.feedHtmlUrl} imageUrl={post.feedImageUrl} size={18} />
-          <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-sm text-accent font-medium truncate" />
+          <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-sm text-accent font-medium truncate" />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -290,32 +297,26 @@ function ArticleReader({
           >
             <Star size={20} weight={post.isStarred ? "fill" : "regular"} />
           </button>
-          <a
-            href={post.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="reader-external-link"
-            title="Open original"
-          >
+          <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-external-link" title="Open original">
             <ArrowSquareOut size={20} />
           </a>
         </div>
       </header>
 
-      {/* Article content */}
       <div ref={contentRef} className="flex-1 overflow-y-auto pb-20 lg:pb-8">
         <article className="reader-article">
-          {/* Article meta */}
           <div className="reader-meta">
-            <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-title hover:underline">{decodeEntities(post.title)}</a>
+            <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-title hover:underline">
+              {decodeEntities(post.title)}
+            </a>
             <div className="reader-byline">
-              <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-muted" />
+              <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-muted" />
               <span className="text-muted">·</span>
               <time className="text-muted">{formatDateLong(post.publishedAt)}</time>
               {article?.length && (
                 <>
                   <span className="text-muted">·</span>
-                  <span className="text-muted">{estimateReadingTime(article.length)}</span>
+                  <span className="text-muted">{readingTime(article.length)}</span>
                 </>
               )}
               {post.isPaywalled && (
@@ -326,7 +327,6 @@ function ArticleReader({
             </div>
           </div>
 
-          {/* Article body */}
           {loading && (
             <div className="reader-loading">
               <div className="reader-skeleton" />
@@ -378,16 +378,12 @@ function Sidebar({
   onAddFeed,
   onImport,
   onSettings,
-  onMarkRead,
-  onMarkUnread,
 }: {
   filter: Filter;
   setFilter: (f: Filter) => void;
   onAddFeed: () => void;
   onImport: () => void;
   onSettings: () => void;
-  onMarkRead: () => void;
-  onMarkUnread: () => void;
 }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const folders = useQuery(api.folders.list, {});
@@ -396,40 +392,27 @@ function Sidebar({
   const getFeedsInFolder = (folderId: Id<"brFolders">) =>
     feeds?.filter((f) => f.folderId === folderId) ?? [];
 
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
   return (
     <>
       <div className="sidebar-header">
-        <h1
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontSize: "1.25rem",
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-          }}
-        >
+        <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.01em" }}>
           BenReader
         </h1>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 12, paddingBottom: 12 }}>
-        <SidebarItem
-          label="All Posts"
-          icon={<Article size={16} />}
-          active={filter.type === "all"}
-          onClick={() => setFilter({ type: "all" })}
-        />
-        <SidebarItem
-          label="Starred"
-          icon={<Star size={16} />}
-          active={filter.type === "starred"}
-          onClick={() => setFilter({ type: "starred" })}
-        />
-        <SidebarItem
-          label="History"
-          icon={<ClockCounterClockwise size={16} />}
-          active={filter.type === "history"}
-          onClick={() => setFilter({ type: "history" })}
-        />
+        <SidebarItem label="All Posts" icon={<Article size={16} />} active={filter.type === "all"} onClick={() => setFilter({ type: "all" })} />
+        <SidebarItem label="Starred" icon={<Star size={16} />} active={filter.type === "starred"} onClick={() => setFilter({ type: "starred" })} />
+        <SidebarItem label="History" icon={<ClockCounterClockwise size={16} />} active={filter.type === "history"} onClick={() => setFilter({ type: "history" })} />
 
         <div className="sidebar-section-label">Folders</div>
 
@@ -440,25 +423,14 @@ function Sidebar({
               icon="📁"
               count={getFeedsInFolder(folder._id).length}
               active={filter.type === "folder" && filter.folderId === folder._id}
-              onClick={() => {
-                setFilter({ type: "folder", folderId: folder._id });
-                setExpandedFolders((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(folder._id)) {
-                    next.delete(folder._id);
-                  } else {
-                    next.add(folder._id);
-                  }
-                  return next;
-                });
-              }}
+              onClick={() => { setFilter({ type: "folder", folderId: folder._id }); toggleFolder(folder._id); }}
             />
             {expandedFolders.has(folder._id) &&
               getFeedsInFolder(folder._id).map((feed) => (
                 <button
                   key={feed._id}
                   onClick={() => setFilter({ type: "feed", feedId: feed._id })}
-                  className={`sidebar-sub-item`}
+                  className="sidebar-sub-item"
                 >
                   <BlogIcon htmlUrl={feed.htmlUrl} imageUrl={feed.imageUrl} size={14} />
                   <span className="truncate">{feed.title}</span>
@@ -469,29 +441,17 @@ function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button onClick={onAddFeed} className="btn-accent" style={{ padding: "8px 12px", fontSize: 14 }}>
-          + Add Feed
-        </button>
+        <button onClick={onAddFeed} className="btn-accent" style={{ padding: "8px 12px", fontSize: 14 }}>+ Add Feed</button>
         <div style={{ display: "flex", gap: 4 }}>
-          <button onClick={onImport} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
-            Import OPML
-          </button>
-          <button onClick={onSettings} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
-            ⚙ Settings
-          </button>
+          <button onClick={onImport} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>Import OPML</button>
+          <button onClick={onSettings} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>⚙ Settings</button>
         </div>
       </div>
     </>
   );
 }
 
-function SidebarItem({
-  label,
-  icon,
-  count,
-  active,
-  onClick,
-}: {
+function SidebarItem({ label, icon, count, active, onClick }: {
   label: string;
   icon: React.ReactNode;
   count?: number;
@@ -499,30 +459,17 @@ function SidebarItem({
   onClick: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`sidebar-item ${active ? "active" : ""}`}
-    >
+    <button onClick={onClick} className={`sidebar-item ${active ? "active" : ""}`}>
       <span style={{ fontSize: 16, display: "flex", alignItems: "center" }}>{icon}</span>
-      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {label}
-      </span>
-      {count !== undefined && (
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{count}</span>
-      )}
+      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      {count !== undefined && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{count}</span>}
     </button>
   );
 }
 
 /* ──────────────────── Header ──────────────────── */
 
-function Header({
-  onMenuClick,
-  filter,
-}: {
-  onMenuClick: () => void;
-  filter: Filter;
-}) {
+function Header({ onMenuClick, filter }: { onMenuClick: () => void; filter: Filter }) {
   const refreshAll = useAction(api.feedActions.refreshAll);
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
@@ -530,49 +477,24 @@ function Header({
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    try {
-      await refreshAll({});
-    } catch (e) {
-      console.error(e);
-    }
+    try { await refreshAll({}); } catch (e) { console.error(e); }
     setRefreshing(false);
   };
 
   let title = "All Posts";
   if (filter.type === "starred") title = "Starred";
   else if (filter.type === "history") title = "History";
-  else if (filter.type === "folder") {
-    const folder = folders?.find((f) => f._id === filter.folderId);
-    title = folder?.name ?? "Folder";
-  } else if (filter.type === "feed") {
-    const feed = feeds?.find((f) => f._id === filter.feedId);
-    title = feed?.title ?? "Feed";
-  }
+  else if (filter.type === "folder") title = folders?.find((f) => f._id === filter.folderId)?.name ?? "Folder";
+  else if (filter.type === "feed") title = feeds?.find((f) => f._id === filter.feedId)?.title ?? "Feed";
 
   return (
     <header className="header-bar">
-      <button
-        onClick={onMenuClick}
-        className="lg:hidden p-2 -ml-2"
-        style={{ color: "var(--text-secondary)" }}
-      >
+      <button onClick={onMenuClick} className="lg:hidden p-2 -ml-2" style={{ color: "var(--text-secondary)" }}>
         <List size={24} />
       </button>
-
-      <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>
-        {title}
-      </h2>
-
-      <button
-        onClick={handleRefresh}
-        disabled={refreshing}
-        className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}
-      >
-        <ArrowsClockwise
-          size={14}
-          className={refreshing ? "animate-spin" : ""}
-          style={{ display: "inline", marginRight: 4 }}
-        />
+      <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>{title}</h2>
+      <button onClick={handleRefresh} disabled={refreshing} className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}>
+        <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} style={{ display: "inline", marginRight: 4 }} />
         {refreshing ? "Refreshing…" : "Refresh"}
       </button>
     </header>
@@ -581,12 +503,7 @@ function Header({
 
 /* ──────────────────── Post List ──────────────────── */
 
-function PostList({
-  filter,
-  onOpenPost,
-  onFilterFeed,
-  savedScrollTop,
-}: {
+function PostList({ filter, onOpenPost, onFilterFeed, savedScrollTop }: {
   filter: Filter;
   onOpenPost: (post: ReaderPost) => void;
   onFilterFeed: (feedId: Id<"brFeeds">) => void;
@@ -604,36 +521,18 @@ function PostList({
   const toggleStar = useMutation(api.posts.toggleStar);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Save scroll position continuously
   const handleScroll = useCallback(() => {
-    if (scrollRef.current) {
-      savedScrollTop.current = scrollRef.current.scrollTop;
-    }
+    if (scrollRef.current) savedScrollTop.current = scrollRef.current.scrollTop;
   }, [savedScrollTop]);
 
-  // Restore scroll position after posts load
   useEffect(() => {
     if (posts && posts.length > 0 && scrollRef.current && savedScrollTop.current > 0) {
       scrollRef.current.scrollTop = savedScrollTop.current;
     }
   }, [posts, savedScrollTop]);
 
-  if (!posts) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted">
-        <div className="animate-pulse">Loading…</div>
-      </div>
-    );
-  }
-
-  if (posts.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4">
-        <span className="text-4xl">📭</span>
-        <p className="text-sm">No posts yet. Add some feeds or hit refresh!</p>
-      </div>
-    );
-  }
+  if (!posts) return <div className="flex-1 flex items-center justify-center text-muted"><div className="animate-pulse">Loading…</div></div>;
+  if (posts.length === 0) return <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet. Add some feeds or hit refresh!</p></div>;
 
   return (
     <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-44 lg:pb-4">
@@ -641,7 +540,7 @@ function PostList({
         {posts.map((post, i) => (
           <article key={post._id} className={i < 20 ? "animate-fade-in" : ""} style={i < 20 ? { animationDelay: `${i * 30}ms` } : undefined}>
             <div
-              className={`post-card group ${post.isRead ? "read" : ""}`}
+              className="post-card group"
               onClick={() => {
                 if (!post.isRead) markRead({ postId: post._id });
                 onOpenPost({
@@ -658,18 +557,14 @@ function PostList({
                 });
               }}
             >
-              {/* Blog name + thumbnail */}
               <div className="flex items-start gap-4">
                 <div className="flex-1 min-w-0">
                   <button
                     className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5 mb-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onFilterFeed(post.feedId);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); onFilterFeed(post.feedId); }}
                   >
                     <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
-                    <BlogName name={post.feedTitle} brandColor={post.feedBrandColor} className="text-accent" />
+                    <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-accent" />
                   </button>
 
                   <h3
@@ -687,37 +582,22 @@ function PostList({
                 </div>
 
                 {post.imageUrl && (
-                  <img
-                    src={post.imageUrl}
-                    alt=""
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover flex-shrink-0"
-                    loading="lazy"
-                  />
+                  <img src={post.imageUrl} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover flex-shrink-0" loading="lazy" />
                 )}
               </div>
 
-              {/* Meta row: date · read time · paywall on left, star on right */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs text-muted">
                   <span>{formatDate(post.publishedAt)}</span>
                   {post.wordCount && post.wordCount > 0 && (
-                    <>
-                      <span>·</span>
-                      <span>{estimateReadingTime(post.wordCount)}</span>
-                    </>
+                    <><span>·</span><span>{readingTime(post.wordCount)}</span></>
                   )}
                   {post.isPaywalled && (
-                    <>
-                      <span>·</span>
-                      <LockSimple size={12} weight="fill" />
-                    </>
+                    <><span>·</span><LockSimple size={12} weight="fill" /></>
                   )}
                 </div>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleStar({ postId: post._id });
-                  }}
+                  onClick={(e) => { e.stopPropagation(); toggleStar({ postId: post._id }); }}
                   className="p-1 rounded-lg transition-colors"
                   style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
                 >
@@ -744,17 +624,8 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url || !folderId) return;
-
-    const feedId = await addFeed({
-      title: url,
-      xmlUrl: url,
-      htmlUrl: url,
-      folderId: folderId as Id<"brFolders">,
-    });
-
-    try {
-      await refreshFeed({ feedId });
-    } catch {}
+    const feedId = await addFeed({ title: url, xmlUrl: url, htmlUrl: url, folderId: folderId as Id<"brFolders"> });
+    try { await refreshFeed({ feedId }); } catch {}
     onClose();
   };
 
@@ -763,34 +634,16 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">RSS URL</label>
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com/feed.xml"
-            className="form-input"
-            required
-          />
+          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/feed.xml" className="form-input" required />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">Folder</label>
-          <select
-            value={folderId}
-            onChange={(e) => setFolderId(e.target.value as Id<"brFolders">)}
-            className="form-input"
-            required
-          >
+          <select value={folderId} onChange={(e) => setFolderId(e.target.value as Id<"brFolders">)} className="form-input" required>
             <option value="">Select folder…</option>
-            {folders?.map((f) => (
-              <option key={f._id} value={f._id}>
-                {f.name}
-              </option>
-            ))}
+            {folders?.map((f) => <option key={f._id} value={f._id}>{f.name}</option>)}
           </select>
         </div>
-        <button type="submit" className="btn-accent w-full py-2">
-          Add Feed
-        </button>
+        <button type="submit" className="btn-accent w-full py-2">Add Feed</button>
       </form>
     </Modal>
   );
@@ -804,14 +657,8 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   const handleImport = async () => {
     const file = fileRef.current?.files?.[0];
     if (!file) return;
-
     setImporting(true);
-    const text = await file.text();
-    try {
-      await importOPML({ opmlXml: text });
-    } catch (e) {
-      console.error(e);
-    }
+    try { await importOPML({ opmlXml: await file.text() }); } catch (e) { console.error(e); }
     setImporting(false);
     onClose();
   };
@@ -841,11 +688,6 @@ function SettingsModal({ onClose, onMarkRead, onMarkUnread }: { onClose: () => v
     { name: "Warm Dark", value: "#2C2418" },
   ];
 
-  const applyBg = (color: string) => {
-    document.documentElement.style.setProperty("--bg-primary", color);
-    setSetting({ key: "bgColor", value: color });
-  };
-
   return (
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-4">
@@ -855,12 +697,12 @@ function SettingsModal({ onClose, onMarkRead, onMarkUnread }: { onClose: () => v
             {colors.map((c) => (
               <button
                 key={c.value}
-                onClick={() => applyBg(c.value)}
-                className={`color-swatch ${(bgColor ?? "#F5F0E8") === c.value ? "active" : ""}`}
-                style={{
-                  backgroundColor: c.value,
-                  color: c.value === "#1A1A2E" || c.value === "#2C2418" ? "#fff" : "#2C2418",
+                onClick={() => {
+                  document.documentElement.style.setProperty("--bg-primary", c.value);
+                  setSetting({ key: "bgColor", value: c.value });
                 }}
+                className={`color-swatch ${(bgColor ?? "#F5F0E8") === c.value ? "active" : ""}`}
+                style={{ backgroundColor: c.value, color: c.value === "#1A1A2E" || c.value === "#2C2418" ? "#fff" : "#2C2418" }}
               >
                 {c.name}
               </button>
@@ -870,116 +712,11 @@ function SettingsModal({ onClose, onMarkRead, onMarkUnread }: { onClose: () => v
         <div>
           <label className="block text-sm font-medium mb-2">Read Status</label>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { onMarkRead(); onClose(); }} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
-              Mark all read
-            </button>
-            <button onClick={() => { onMarkUnread(); onClose(); }} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>
-              Mark all unread
-            </button>
+            <button onClick={() => { onMarkRead(); onClose(); }} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>Mark all read</button>
+            <button onClick={() => { onMarkUnread(); onClose(); }} className="btn-outline" style={{ flex: 1, padding: "8px 0" }}>Mark all unread</button>
           </div>
         </div>
       </div>
     </Modal>
   );
-}
-
-function Modal({
-  onClose,
-  title,
-  children,
-}: {
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative modal-card animate-fade-in">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-            {title}
-          </h3>
-          <button onClick={onClose} className="text-muted transition-colors">
-            ✕
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/* ──────────────────── Blog Icon ──────────────────── */
-
-function BlogIcon({ htmlUrl, imageUrl, size = 16 }: { htmlUrl?: string; imageUrl?: string; size?: number }) {
-  const faviconUrl = htmlUrl
-    ? `https://www.google.com/s2/favicons?domain=${new URL(htmlUrl).hostname}&sz=${size * 2}`
-    : undefined;
-  const src = imageUrl || faviconUrl;
-  if (!src) return null;
-  return (
-    <img
-      src={src}
-      alt=""
-      width={size}
-      height={size}
-      className="rounded-sm object-cover flex-shrink-0"
-      style={{ width: size, height: size }}
-      loading="lazy"
-      onError={(e) => {
-        // Hide broken images
-        (e.target as HTMLImageElement).style.display = "none";
-      }}
-    />
-  );
-}
-
-function BlogName({ name, brandColor, className }: { name: string; brandColor?: string; className?: string }) {
-  return (
-    <span className={className} style={brandColor ? { color: brandColor } : undefined}>
-      {name}
-    </span>
-  );
-}
-
-/* ──────────────────── Helpers ──────────────────── */
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
-
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function estimateReadingTime(wordCount: number): string {
-  const mins = Math.max(1, Math.round(wordCount / 238));
-  return `${mins} min read`;
-}
-
-function formatDateLong(ts: number): string {
-  return new Date(ts).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
