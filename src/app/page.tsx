@@ -40,7 +40,6 @@ type ReaderPost = {
 
 export default function Home() {
   const [filter, setFilter] = useState<Filter | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -390,6 +389,7 @@ function Sidebar({
   onMarkRead: () => void;
   onMarkUnread: () => void;
 }) {
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
 
