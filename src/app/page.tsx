@@ -132,7 +132,8 @@ function filterToPath(f: Filter): string {
 }
 
 function pathToFilter(path: string): Filter | null {
-  if (path === "/all" || path === "/") return { type: "all" };
+  if (path === "/all") return { type: "all" };
+  if (path === "/") return null; // let default-to-Blogs logic handle it
   if (path === "/starred") return { type: "starred" };
   if (path === "/history") return { type: "history" };
   const folderMatch = path.match(/^\/folder\/(.+)$/);
