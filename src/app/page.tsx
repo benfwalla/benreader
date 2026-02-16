@@ -43,8 +43,40 @@ export default function Home() {
   const [showImport, setShowImport] = useState(false);
   const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
   const savedScrollTop = useRef(0);
+  const readerPostRef = useRef<ReaderPost | null>(null);
   const folders = useQuery(api.folders.list, {});
   const markAllRead = useMutation(api.posts.markAllRead);
+
+  // Sync ref with state for popstate handler
+  useEffect(() => {
+    readerPostRef.current = readerPost;
+  }, [readerPost]);
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state?.post) {
+        setReaderPost(e.state.post);
+      } else {
+        setReaderPost(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Open a post with history entry
+  const openPost = useCallback((post: ReaderPost) => {
+    window.history.pushState({ post }, "", `?post=${post._id}`);
+    setReaderPost(post);
+  }, []);
+
+  // Close post and go back in history
+  const closePost = useCallback(() => {
+    if (readerPostRef.current) {
+      window.history.back();
+    }
+  }, []);
 
   // Default to "Blogs" folder
   useEffect(() => {
@@ -81,6 +113,9 @@ export default function Home() {
           setFilter={(f) => {
             setFilter(f);
             setSidebarOpen(false);
+            if (readerPost) {
+              window.history.replaceState(null, "", "/");
+            }
             setReaderPost(null);
           }}
           onAddFeed={() => setShowAddFeed(true)}
@@ -106,7 +141,7 @@ export default function Home() {
         {readerPost ? (
           <ArticleReader
             post={readerPost}
-            onClose={() => setReaderPost(null)}
+            onClose={closePost}
           />
         ) : (
           <>
@@ -116,9 +151,7 @@ export default function Home() {
             />
             <PostList
               filter={activeFilter}
-              onOpenPost={(post) => {
-                setReaderPost(post);
-              }}
+              onOpenPost={openPost}
               onFilterFeed={(feedId) => {
                 setFilter({ type: "feed", feedId });
               }}
