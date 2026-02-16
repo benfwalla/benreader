@@ -116,6 +116,12 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Prevent overscroll from leaking to parent containers (iOS PWA fix) */
+.overflow-y-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Slide reader overlay */
 .slide-reader {
   position: absolute;
@@ -129,12 +135,9 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Header bar */
 .header-bar {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 10;
-  background-color: rgba(245, 240, 232, 0.9);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background-color: var(--bg-primary);
   border-bottom: 1px solid var(--border);
   padding: 12px 16px;
   display: flex;
@@ -310,12 +313,9 @@ h1, h2, h3, h4, h5, h6 {
 /* ──────────────────── Article Reader ──────────────────── */
 
 .reader-header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 10;
-  background-color: rgba(245, 240, 232, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background-color: var(--bg-primary);
   border-bottom: 1px solid var(--border);
   padding: 10px 16px;
   display: flex;
