@@ -33,6 +33,7 @@ export default defineSchema({
   })
     .index("by_feed", ["feedId", "publishedAt"])
     .index("by_starred", ["isStarred", "publishedAt"])
+    .index("by_read", ["isRead", "publishedAt"])
     .index("by_publishedAt", ["publishedAt"])
     .index("by_guid", ["guid"]),
 

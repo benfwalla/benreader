@@ -6,6 +6,7 @@ export const list = query({
     feedId: v.optional(v.id("brFeeds")),
     folderId: v.optional(v.id("brFolders")),
     starredOnly: v.optional(v.boolean()),
+    historyOnly: v.optional(v.boolean()),
     limit: v.optional(v.number()),
   },
   returns: v.array(
@@ -35,7 +36,13 @@ export const list = query({
 
     let posts;
 
-    if (args.starredOnly) {
+    if (args.historyOnly) {
+      posts = await ctx.db
+        .query("brPosts")
+        .withIndex("by_read", (q) => q.eq("isRead", true))
+        .order("desc")
+        .take(limit);
+    } else if (args.starredOnly) {
       posts = await ctx.db
         .query("brPosts")
         .withIndex("by_starred", (q) => q.eq("isStarred", true))

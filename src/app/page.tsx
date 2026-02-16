@@ -19,6 +19,7 @@ import {
 type Filter =
   | { type: "all" }
   | { type: "starred" }
+  | { type: "history" }
   | { type: "folder"; folderId: Id<"brFolders"> }
   | { type: "feed"; feedId: Id<"brFeeds"> };
 
@@ -410,6 +411,12 @@ function Sidebar({
           active={filter.type === "starred"}
           onClick={() => setFilter({ type: "starred" })}
         />
+        <SidebarItem
+          label="History"
+          icon="🕐"
+          active={filter.type === "history"}
+          onClick={() => setFilter({ type: "history" })}
+        />
 
         <div className="sidebar-section-label">Folders</div>
 
@@ -518,6 +525,7 @@ function Header({
 
   let title = "All Posts";
   if (filter.type === "starred") title = "Starred";
+  else if (filter.type === "history") title = "History";
   else if (filter.type === "folder") {
     const folder = folders?.find((f) => f._id === filter.folderId);
     title = folder?.name ?? "Folder";
@@ -573,6 +581,7 @@ function PostList({
     feedId: filter.type === "feed" ? filter.feedId : undefined,
     folderId: filter.type === "folder" ? filter.folderId : undefined,
     starredOnly: filter.type === "starred" ? true : undefined,
+    historyOnly: filter.type === "history" ? true : undefined,
     limit: 200,
   });
 
