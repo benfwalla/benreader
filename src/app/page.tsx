@@ -40,6 +40,7 @@ type ReaderPost = {
 
 export default function Home() {
   const [filter, setFilter] = useState<Filter | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -429,10 +430,20 @@ function Sidebar({
               icon="📁"
               count={getFeedsInFolder(folder._id).length}
               active={filter.type === "folder" && filter.folderId === folder._id}
-              onClick={() => setFilter({ type: "folder", folderId: folder._id })}
+              onClick={() => {
+                setFilter({ type: "folder", folderId: folder._id });
+                setExpandedFolders((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(folder._id)) {
+                    next.delete(folder._id);
+                  } else {
+                    next.add(folder._id);
+                  }
+                  return next;
+                });
+              }}
             />
-            {filter.type === "folder" &&
-              filter.folderId === folder._id &&
+            {expandedFolders.has(folder._id) &&
               getFeedsInFolder(folder._id).map((feed) => (
                 <button
                   key={feed._id}
