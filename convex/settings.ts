@@ -29,18 +29,3 @@ export const set = mutation({
     return null;
   },
 });
-
-export const getAll = query({
-  args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("brSettings"),
-      _creationTime: v.number(),
-      key: v.string(),
-      value: v.string(),
-    })
-  ),
-  handler: async (ctx) => {
-    return await ctx.db.query("brSettings").collect();
-  },
-});

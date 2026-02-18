@@ -26,14 +26,3 @@ export const create = mutation({
     return await ctx.db.insert("brFolders", { name: args.name, order });
   },
 });
-
-export const reorder = mutation({
-  args: { folderIds: v.array(v.id("brFolders")) },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await Promise.all(
-      args.folderIds.map((id, index) => ctx.db.patch(id, { order: index }))
-    );
-    return null;
-  },
-});
