@@ -121,7 +121,16 @@ export const refreshFeed = action({
 
       for (const item of items.slice(0, 100)) {
         const title = item.title || "Untitled";
-        const link = item.link?.["@_href"] || item.link || item.url || "";
+        // Atom feeds can have multiple <link> elements (array of objects)
+        // Prefer rel="alternate", fall back to first link with href
+        let link: string | object = "";
+        if (Array.isArray(item.link)) {
+          const alt = item.link.find((l: any) => l["@_rel"] === "alternate");
+          const withHref = item.link.find((l: any) => l["@_href"]);
+          link = (alt?.["@_href"] || withHref?.["@_href"] || "") as string;
+        } else {
+          link = item.link?.["@_href"] || item.link || item.url || "";
+        }
         const guid =
           item.guid?.["#text"] || item.guid || item.id || link || title;
         const pubDate = item.pubDate || item.published || item.updated;
