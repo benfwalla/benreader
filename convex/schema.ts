@@ -31,6 +31,7 @@ export default defineSchema({
     guid: v.string(),
     author: v.optional(v.string()),
     wordCount: v.optional(v.number()),
+    rssContent: v.optional(v.string()),
   })
     .index("by_feed", ["feedId", "publishedAt"])
     .index("by_starred", ["isStarred", "publishedAt"])

@@ -30,6 +30,7 @@ export const list = query({
       feedHtmlUrl: v.optional(v.string()),
       feedBrandColor: v.optional(v.string()),
       wordCount: v.optional(v.number()),
+      hasRssContent: v.boolean(),
     })
   ),
   handler: async (ctx, args) => {
@@ -90,10 +91,20 @@ export const list = query({
         feedInfo = { title: feed?.title ?? "Unknown", imageUrl: feed?.imageUrl, htmlUrl: feed?.htmlUrl, brandColor: feed?.brandColor };
         feedCache.set(post.feedId, feedInfo);
       }
-      result.push({ ...post, feedTitle: feedInfo.title, feedImageUrl: feedInfo.imageUrl, feedHtmlUrl: feedInfo.htmlUrl, feedBrandColor: feedInfo.brandColor });
+      const { rssContent, ...postWithoutRss } = post as any;
+      result.push({ ...postWithoutRss, feedTitle: feedInfo.title, feedImageUrl: feedInfo.imageUrl, feedHtmlUrl: feedInfo.htmlUrl, feedBrandColor: feedInfo.brandColor, hasRssContent: !!rssContent });
     }
 
     return result;
+  },
+});
+
+export const getRssContent = query({
+  args: { postId: v.id("brPosts") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const post = await ctx.db.get(args.postId);
+    return post?.rssContent ?? null;
   },
 });
 

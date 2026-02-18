@@ -38,6 +38,7 @@ type ReaderPost = {
   publishedAt: number;
   isStarred: boolean;
   isPaywalled: boolean;
+  hasRssContent?: boolean;
 };
 
 /* ──────────────────── Helpers ──────────────────── */
@@ -309,6 +310,7 @@ export default function Home() {
 
 function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => void }) {
   const fetchArticle = useAction(api.articles.fetch);
+  const rssContent = useQuery(api.posts.getRssContent, post.hasRssContent ? { postId: post._id } : "skip");
   const toggleStar = useMutation(api.posts.toggleStar);
   const [article, setArticle] = useState<{
     title: string;
@@ -321,10 +323,27 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // If we have RSS content, use it directly
+    if (post.hasRssContent && rssContent) {
+      const textOnly = rssContent.replace(/<[^>]*>/g, " ");
+      const wordCount = textOnly.split(/\s+/).filter((w: string) => w.length > 0).length;
+      setArticle({ title: post.title, content: rssContent, siteName: post.feedTitle, length: wordCount });
+      setLoading(false);
+      return;
+    }
+    // If waiting for rssContent query, don't fetch yet
+    if (post.hasRssContent && rssContent === undefined) return;
+
     let cancelled = false;
     setLoading(true);
     setError(false);
     setArticle(null);
+
+    if (!post.url) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
 
     fetchArticle({ url: post.url })
       .then((r) => {
@@ -336,7 +355,7 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
       .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [post.url, fetchArticle]);
+  }, [post.url, post.hasRssContent, post._id, rssContent, fetchArticle]);
 
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [article]);
 
@@ -623,6 +642,7 @@ function PostList({ filter, onOpenPost, onFilterFeed, savedScrollTop }: {
                   publishedAt: post.publishedAt,
                   isStarred: post.isStarred,
                   isPaywalled: post.isPaywalled,
+                  hasRssContent: post.hasRssContent,
                 });
               }}
             >

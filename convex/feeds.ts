@@ -81,6 +81,7 @@ export const upsertPosts = internalMutation({
         author: v.optional(v.string()),
         isPaywalled: v.boolean(),
         wordCount: v.optional(v.number()),
+        rssContent: v.optional(v.string()),
       })
     ),
   },
@@ -93,10 +94,12 @@ export const upsertPosts = internalMutation({
         .first();
 
       if (existing) {
-        // Update paywall status if it changed
-        if (existing.isPaywalled !== post.isPaywalled) {
-          await ctx.db.patch(existing._id, { isPaywalled: post.isPaywalled });
-        }
+        // Update fields that may have been fixed/changed
+        const patch: Record<string, any> = {};
+        if (existing.isPaywalled !== post.isPaywalled) patch.isPaywalled = post.isPaywalled;
+        if ((!existing.url || existing.url === "") && post.url) patch.url = post.url;
+        if (!existing.rssContent && post.rssContent) patch.rssContent = post.rssContent;
+        if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
       } else {
         await ctx.db.insert("brPosts", {
           feedId: args.feedId,
@@ -111,6 +114,7 @@ export const upsertPosts = internalMutation({
           guid: post.guid,
           author: post.author,
           wordCount: post.wordCount,
+          rssContent: post.rssContent,
         });
       }
     }

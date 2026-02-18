@@ -136,17 +136,20 @@ export const refreshFeed = action({
         const pubDate = item.pubDate || item.published || item.updated;
         const publishedAt = pubDate ? new Date(pubDate).getTime() : Date.now();
 
-        let content =
+        let rawContent =
           item["content:encoded"] ||
           item.description ||
           item.summary ||
           item.content?.["#text"] ||
           item.content ||
           "";
-        if (typeof content === "object") content = "";
-        const contentText = String(content).replace(/<[^>]*>/g, "");
+        if (typeof rawContent === "object") rawContent = "";
+        const rawContentStr = String(rawContent);
+        const contentText = rawContentStr.replace(/<[^>]*>/g, "");
         const wordCount = contentText.split(/\s+/).filter((w: string) => w.length > 0).length;
-        content = contentText.slice(0, 300);
+        const content = contentText.slice(0, 300);
+        // Store full RSS HTML for feeds where commentary lives in the feed itself
+        const rssContent = rawContentStr.length > 100 ? rawContentStr : undefined;
 
         let imageUrl =
           item["media:content"]?.["@_url"] ||
@@ -209,6 +212,7 @@ export const refreshFeed = action({
           author,
           isPaywalled,
           wordCount: wordCount > 0 ? wordCount : undefined,
+          rssContent,
         });
       }
 
