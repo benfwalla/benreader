@@ -91,11 +91,6 @@ export const refreshFeed = action({
       let items = channel.item || channel.entry || [];
       if (!Array.isArray(items)) items = [items];
 
-      // Detect Substack: either substack.com domain or RSS content hints
-      const xmlLower = xml.toLowerCase();
-      const isSubstack = feed.xmlUrl.includes("substack.com") || 
-        xmlLower.includes("substack") ||
-        xmlLower.includes("substackcdn.com");
       const posts = [];
 
       for (const item of items.slice(0, 100)) {
@@ -160,26 +155,8 @@ export const refreshFeed = action({
           titleStr = String(title) || "Untitled";
         }
 
-        let isPaywalled = false;
-        if (isSubstack && link) {
-          try {
-            const pageResp = await fetch(String(link), {
-              headers: { "User-Agent": "BenReader/1.0" },
-              signal: AbortSignal.timeout(10000),
-            });
-            if (pageResp.ok) {
-              const html = await pageResp.text();
-              isPaywalled =
-                html.includes('class="paywall"') ||
-                html.includes('class="paywall-bar"') ||
-                html.includes('"isAccessibleForFree":false') ||
-                html.includes("This post is for paid subscribers") ||
-                html.includes("Subscribe to continue reading");
-            }
-          } catch {
-            // ignore
-          }
-        }
+        // Detect paywall from RSS content (no extra HTTP requests)
+        const isPaywalled = detectPaywall(rawContentStr, item);
 
         posts.push({
           title: titleStr,
@@ -226,3 +203,22 @@ export const refreshAll = action({
     return null;
   },
 });
+
+// Detect paywalled posts from RSS content alone (no extra fetches)
+function detectPaywall(contentHtml: string, item: any): boolean {
+  const lower = contentHtml.toLowerCase();
+  // Substack paywall indicators in RSS content
+  if (
+    lower.includes('class="paywall"') ||
+    lower.includes('class="paywall-bar"') ||
+    lower.includes("this post is for paid subscribers") ||
+    lower.includes("subscribe to continue reading") ||
+    lower.includes("this post is for paying subscribers") ||
+    lower.includes("upgrade to paid")
+  ) return true;
+  // JSON-LD isAccessibleForFree embedded in content
+  if (lower.includes('"isaccessibleforfree":false') || lower.includes('"isaccessibleforfree": false')) return true;
+  // Some RSS feeds use a dedicated field
+  if (item["schema:isAccessibleForFree"] === "False" || item["schema:isAccessibleForFree"] === false) return true;
+  return false;
+}

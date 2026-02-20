@@ -3,9 +3,9 @@ import { api } from "./_generated/api";
 
 const crons = cronJobs();
 
-crons.interval(
+crons.cron(
   "refresh all feeds",
-  { minutes: 30 },
+  "0 11 * * *", // 7am ET (11:00 UTC)
   api.feedActions.refreshAll,
   {}
 );
