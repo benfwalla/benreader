@@ -91,6 +91,11 @@ export const refreshFeed = action({
       let items = channel.item || channel.entry || [];
       if (!Array.isArray(items)) items = [items];
 
+      const xmlLower = xml.toLowerCase();
+      const isSubstack = feed.xmlUrl.includes("substack.com") ||
+        xmlLower.includes("substack") ||
+        xmlLower.includes("substackcdn.com");
+
       const posts = [];
 
       for (const item of items.slice(0, 100)) {
@@ -156,7 +161,7 @@ export const refreshFeed = action({
         }
 
         // Detect paywall from RSS content (no extra HTTP requests)
-        const isPaywalled = detectPaywall(rawContentStr, item);
+        const isPaywalled = detectPaywall(rawContentStr, item, isSubstack);
 
         posts.push({
           title: titleStr,
@@ -205,9 +210,9 @@ export const refreshAll = action({
 });
 
 // Detect paywalled posts from RSS content alone (no extra fetches)
-function detectPaywall(contentHtml: string, item: any): boolean {
+function detectPaywall(contentHtml: string, item: any, isSubstack: boolean): boolean {
   const lower = contentHtml.toLowerCase();
-  // Substack paywall indicators in RSS content
+  // Explicit paywall indicators
   if (
     lower.includes('class="paywall"') ||
     lower.includes('class="paywall-bar"') ||
@@ -216,9 +221,15 @@ function detectPaywall(contentHtml: string, item: any): boolean {
     lower.includes("this post is for paying subscribers") ||
     lower.includes("upgrade to paid")
   ) return true;
-  // JSON-LD isAccessibleForFree embedded in content
+  // JSON-LD isAccessibleForFree
   if (lower.includes('"isaccessibleforfree":false') || lower.includes('"isaccessibleforfree": false')) return true;
-  // Some RSS feeds use a dedicated field
   if (item["schema:isAccessibleForFree"] === "False" || item["schema:isAccessibleForFree"] === false) return true;
+  // Substack truncation: paywalled posts end with a "Read more" link and lack full content markers
+  if (isSubstack && contentHtml.length > 0) {
+    const trimmed = contentHtml.trim();
+    const hasReadMore = /Read more\s*<\/a>\s*<\/p>\s*$/i.test(trimmed);
+    const hasFullContent = lower.includes('class="subscription-widget') || lower.includes('class="footnote"');
+    if (hasReadMore && !hasFullContent) return true;
+  }
   return false;
 }
