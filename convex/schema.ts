@@ -39,6 +39,17 @@ export default defineSchema({
     .index("by_publishedAt", ["publishedAt"])
     .index("by_guid", ["guid"]),
 
+  brPostState: defineTable({
+    guid: v.string(),
+    feedId: v.id("brFeeds"),
+    isRead: v.boolean(),
+    isStarred: v.boolean(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_guid", ["guid"])
+    .index("by_feed", ["feedId"])
+    .index("by_starred", ["isStarred"]),
+
   brSettings: defineTable({
     key: v.string(),
     value: v.string(),

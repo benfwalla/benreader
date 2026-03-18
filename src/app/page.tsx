@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import DOMPurify from "dompurify";
 import {
   House,
@@ -27,8 +27,33 @@ type Filter =
   | { type: "folder"; folderId: Id<"brFolders"> }
   | { type: "feed"; feedId: Id<"brFeeds"> };
 
+type RssPost = {
+  title: string;
+  url: string;
+  content?: string;
+  imageUrl?: string;
+  publishedAt: number;
+  guid: string;
+  author?: string;
+  isPaywalled: boolean;
+  wordCount?: number;
+  rssContent?: string;
+};
+
+type MergedPost = RssPost & {
+  feedId: Id<"brFeeds">;
+  feedTitle: string;
+  feedHtmlUrl?: string;
+  feedImageUrl?: string;
+  feedBrandColor?: string;
+  isRead: boolean;
+  isStarred: boolean;
+  hasRssContent: boolean;
+};
+
 type ReaderPost = {
-  _id: Id<"brPosts">;
+  guid: string;
+  feedId: Id<"brFeeds">;
   title: string;
   url: string;
   feedTitle: string;
@@ -39,6 +64,7 @@ type ReaderPost = {
   isStarred: boolean;
   isPaywalled: boolean;
   hasRssContent?: boolean;
+  rssContent?: string;
 };
 
 /* ──────────────────── Helpers ──────────────────── */
@@ -103,6 +129,12 @@ function FeedName({ name, color, className }: { name: string; color?: string; cl
   return <span className={className} style={color ? { color } : undefined}>{name}</span>;
 }
 
+/* ──────────────────── RSS Cache ──────────────────── */
+
+// Client-side cache for fetched RSS posts per feed
+const feedCache = new Map<string, { posts: RssPost[]; fetchedAt: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /* ──────────────────── Modal ──────────────────── */
 
 function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
@@ -134,7 +166,7 @@ function filterToPath(f: Filter): string {
 
 function pathToFilter(path: string): Filter | null {
   if (path === "/all") return { type: "all" };
-  if (path === "/") return null; // let default-to-Blogs logic handle it
+  if (path === "/") return null;
   if (path === "/starred") return { type: "starred" };
   if (path === "/history") return { type: "history" };
   const folderMatch = path.match(/^\/folder\/(.+)$/);
@@ -142,6 +174,151 @@ function pathToFilter(path: string): Filter | null {
   const feedMatch = path.match(/^\/feed\/(.+)$/);
   if (feedMatch) return { type: "feed", feedId: feedMatch[1] as Id<"brFeeds"> };
   return null;
+}
+
+/* ──────────────────── useFeedPosts hook ──────────────────── */
+
+function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: string; htmlUrl: string; folderId: Id<"brFolders">; imageUrl?: string; brandColor?: string }> | undefined, filter: Filter) {
+  const fetchFeed = useAction(api.feedActions.fetchFeed);
+  const postStates = useQuery(api.posts.listStates, {});
+  const [rssPosts, setRssPosts] = useState<Map<string, RssPost[]>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // Determine which feeds to fetch based on filter
+  const feedsToFetch = useMemo(() => {
+    if (!feeds) return [];
+    switch (filter.type) {
+      case "feed":
+        return feeds.filter((f) => f._id === filter.feedId);
+      case "folder":
+        return feeds.filter((f) => f.folderId === filter.folderId);
+      case "all":
+        return feeds;
+      case "starred":
+      case "history":
+        return feeds; // Need all feeds to match guids
+    }
+  }, [feeds, filter]);
+
+  // Fetch RSS for required feeds
+  useEffect(() => {
+    if (!feedsToFetch.length) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    const fetchAll = async () => {
+      const newPosts = new Map(rssPosts);
+      const promises = feedsToFetch.map(async (feed) => {
+        const cached = feedCache.get(feed._id);
+        if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+          newPosts.set(feed._id, cached.posts);
+          return;
+        }
+        try {
+          const posts = await fetchFeed({ feedId: feed._id });
+          feedCache.set(feed._id, { posts, fetchedAt: Date.now() });
+          newPosts.set(feed._id, posts);
+        } catch (e) {
+          console.error(`Failed to fetch ${feed.title}:`, e);
+          // Keep cached data if available
+          if (cached) newPosts.set(feed._id, cached.posts);
+        }
+      });
+
+      await Promise.all(promises);
+      if (!cancelled) {
+        setRssPosts(newPosts);
+        setLoading(false);
+      }
+    };
+
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [feedsToFetch.map(f => f._id).join(","), refreshCounter]);
+
+  // Build state lookup
+  const stateByGuid = useMemo(() => {
+    const map = new Map<string, { isRead: boolean; isStarred: boolean; readAt?: number }>();
+    if (postStates) {
+      for (const s of postStates) {
+        map.set(s.guid, { isRead: s.isRead, isStarred: s.isStarred, readAt: s.readAt });
+      }
+    }
+    return map;
+  }, [postStates]);
+
+  // Merge RSS posts with state
+  const mergedPosts = useMemo((): MergedPost[] => {
+    if (!feeds) return [];
+
+    const feedMap = new Map(feeds.map((f) => [f._id, f]));
+    const allMerged: MergedPost[] = [];
+
+    for (const [feedId, posts] of rssPosts) {
+      const feed = feedMap.get(feedId as Id<"brFeeds">);
+      if (!feed) continue;
+
+      for (const post of posts) {
+        const state = stateByGuid.get(post.guid);
+        allMerged.push({
+          ...post,
+          feedId: feed._id,
+          feedTitle: feed.title,
+          feedHtmlUrl: feed.htmlUrl || undefined,
+          feedImageUrl: feed.imageUrl,
+          feedBrandColor: feed.brandColor,
+          isRead: state?.isRead ?? false,
+          isStarred: state?.isStarred ?? false,
+          hasRssContent: !!post.rssContent,
+        });
+      }
+    }
+
+    return allMerged;
+  }, [rssPosts, stateByGuid, feeds]);
+
+  // Filter and sort
+  const filteredPosts = useMemo(() => {
+    let posts = mergedPosts;
+
+    switch (filter.type) {
+      case "starred":
+        posts = posts.filter((p) => p.isStarred);
+        break;
+      case "history":
+        posts = posts.filter((p) => p.isRead);
+        posts.sort((a, b) => {
+          const aRead = stateByGuid.get(a.guid)?.readAt ?? 0;
+          const bRead = stateByGuid.get(b.guid)?.readAt ?? 0;
+          return bRead - aRead;
+        });
+        return posts.slice(0, 200);
+      case "feed":
+        posts = posts.filter((p) => p.feedId === filter.feedId);
+        break;
+      case "folder":
+        // Already filtered by feedsToFetch
+        break;
+    }
+
+    posts.sort((a, b) => b.publishedAt - a.publishedAt);
+    return posts.slice(0, 200);
+  }, [mergedPosts, filter, stateByGuid]);
+
+  const refresh = useCallback(() => {
+    // Clear cache for feeds in view
+    for (const feed of feedsToFetch) {
+      feedCache.delete(feed._id);
+    }
+    setRefreshCounter((c) => c + 1);
+  }, [feedsToFetch]);
+
+  return { posts: filteredPosts, loading, refresh };
 }
 
 /* ──────────────────── Main App ──────────────────── */
@@ -158,6 +335,7 @@ export default function Home() {
   const savedScrollTop = useRef(0);
   const readerPostRef = useRef<ReaderPost | null>(null);
   const folders = useQuery(api.folders.list, {});
+  const feeds = useQuery(api.feeds.list, {});
   const markAllRead = useMutation(api.posts.markAllRead);
 
   const setFilter = useCallback((f: Filter) => {
@@ -185,7 +363,7 @@ export default function Home() {
   }, []);
 
   const openPost = useCallback((post: ReaderPost) => {
-    window.history.pushState({ post }, "", `?post=${post._id}`);
+    window.history.pushState({ post }, "", `?post=${post.guid}`);
     setReaderPost(post);
     requestAnimationFrame(() => setReaderVisible(true));
   }, []);
@@ -196,7 +374,6 @@ export default function Home() {
     setPendingClose(true);
   }, []);
 
-  // After slide-out animation ends, actually go back
   useEffect(() => {
     if (!pendingClose) return;
     const t = setTimeout(() => {
@@ -252,12 +429,13 @@ export default function Home() {
 
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
         <div className={readerPost ? "pointer-events-none" : ""} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-          <Header onMenuClick={() => setSidebarOpen(true)} filter={activeFilter} />
-          <PostList
+          <PostListWithHeader
             filter={activeFilter}
+            feeds={feeds}
             onOpenPost={openPost}
             onFilterFeed={(feedId) => setFilter({ type: "feed", feedId })}
             savedScrollTop={savedScrollTop}
+            onMenuClick={() => setSidebarOpen(true)}
           />
         </div>
         {readerPost && (
@@ -306,11 +484,150 @@ export default function Home() {
   );
 }
 
+/* ──────────────────── Combined Header + PostList ──────────────────── */
+
+function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, savedScrollTop, onMenuClick }: {
+  filter: Filter;
+  feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: string; htmlUrl: string; folderId: Id<"brFolders">; imageUrl?: string; brandColor?: string }> | undefined;
+  onOpenPost: (post: ReaderPost) => void;
+  onFilterFeed: (feedId: Id<"brFeeds">) => void;
+  savedScrollTop: React.MutableRefObject<number>;
+  onMenuClick: () => void;
+}) {
+  const { posts, loading, refresh } = useFeedPosts(feeds, filter);
+  const markRead = useMutation(api.posts.markRead);
+  const toggleStar = useMutation(api.posts.toggleStar);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const folders = useQuery(api.folders.list, {});
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    refresh();
+    // Wait a bit for the fetch to complete
+    setTimeout(() => setRefreshing(false), 2000);
+  };
+
+  let title = "All Posts";
+  if (filter.type === "starred") title = "Starred";
+  else if (filter.type === "history") title = "History";
+  else if (filter.type === "folder") title = folders?.find((f) => f._id === filter.folderId)?.name ?? "Folder";
+  else if (filter.type === "feed") title = feeds?.find((f) => f._id === filter.feedId)?.title ?? "Feed";
+
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) savedScrollTop.current = scrollRef.current.scrollTop;
+  }, [savedScrollTop]);
+
+  useEffect(() => {
+    if (posts && posts.length > 0 && scrollRef.current && savedScrollTop.current > 0) {
+      scrollRef.current.scrollTop = savedScrollTop.current;
+    }
+  }, [posts, savedScrollTop]);
+
+  return (
+    <>
+      <header className="header-bar">
+        <button onClick={onMenuClick} className="lg:hidden p-2 -ml-2" style={{ color: "var(--text-secondary)" }}>
+          <List size={24} />
+        </button>
+        <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>{title}</h2>
+        <button onClick={handleRefresh} disabled={refreshing} className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}>
+          <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} style={{ display: "inline", marginRight: 4 }} />
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </header>
+
+      {loading && !posts.length ? (
+        <div className="flex-1 flex items-center justify-center text-muted"><div className="animate-pulse">Loading…</div></div>
+      ) : posts.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet. Add some feeds or hit refresh!</p></div>
+      ) : (
+        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+          <div className="feed-list">
+            {posts.map((post) => (
+              <article key={post.guid}>
+                <div
+                  className="post-card group"
+                  onClick={() => {
+                    if (!post.isRead) markRead({ guid: post.guid, feedId: post.feedId });
+                    onOpenPost({
+                      guid: post.guid,
+                      feedId: post.feedId,
+                      title: post.title,
+                      url: post.url,
+                      feedTitle: post.feedTitle,
+                      feedHtmlUrl: post.feedHtmlUrl,
+                      feedImageUrl: post.feedImageUrl,
+                      feedBrandColor: post.feedBrandColor,
+                      publishedAt: post.publishedAt,
+                      isStarred: post.isStarred,
+                      isPaywalled: post.isPaywalled,
+                      hasRssContent: post.hasRssContent,
+                      rssContent: post.rssContent,
+                    });
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <button
+                        className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5 mb-2"
+                        onClick={(e) => { e.stopPropagation(); onFilterFeed(post.feedId); }}
+                      >
+                        <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
+                        <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-accent" />
+                      </button>
+
+                      <h3
+                        className={`font-semibold text-base lg:text-lg leading-snug group-hover:text-accent transition-colors line-clamp-2 ${post.content ? "mb-1.5" : "mb-4"}`}
+                        style={{ fontFamily: "var(--font-serif)" }}
+                      >
+                        {decodeEntities(post.title)}
+                      </h3>
+
+                      {post.content && (
+                        <p className="text-sm text-secondary leading-relaxed line-clamp-2 mb-4">
+                          {decodeEntities(post.content.slice(0, 150))}
+                        </p>
+                      )}
+                    </div>
+
+                    {post.imageUrl && (
+                      <img src={post.imageUrl} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover flex-shrink-0" loading="lazy" />
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-muted">
+                      <span>{formatDate(post.publishedAt)}</span>
+                      {post.wordCount && post.wordCount > 0 && (
+                        <><span>·</span><span>{readingTime(post.wordCount)}</span></>
+                      )}
+                      {post.isPaywalled && (
+                        <><span>·</span><LockSimple size={12} weight="fill" /></>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleStar({ guid: post.guid, feedId: post.feedId }); }}
+                      className="p-1 rounded-lg transition-colors"
+                      style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
+                    >
+                      <Star size={16} weight={post.isStarred ? "fill" : "regular"} />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ──────────────────── Article Reader ──────────────────── */
 
 function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => void }) {
   const fetchArticle = useAction(api.articles.fetch);
-  const rssContent = useQuery(api.posts.getRssContent, post.hasRssContent ? { postId: post._id } : "skip");
   const toggleStar = useMutation(api.posts.toggleStar);
   const [article, setArticle] = useState<{
     title: string;
@@ -324,15 +641,13 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
 
   useEffect(() => {
     // If we have RSS content, use it directly
-    if (post.hasRssContent && rssContent) {
-      const textOnly = rssContent.replace(/<[^>]*>/g, " ");
+    if (post.hasRssContent && post.rssContent) {
+      const textOnly = post.rssContent.replace(/<[^>]*>/g, " ");
       const wordCount = textOnly.split(/\s+/).filter((w: string) => w.length > 0).length;
-      setArticle({ title: post.title, content: rssContent, siteName: post.feedTitle, length: wordCount });
+      setArticle({ title: post.title, content: post.rssContent, siteName: post.feedTitle, length: wordCount });
       setLoading(false);
       return;
     }
-    // If waiting for rssContent query, don't fetch yet
-    if (post.hasRssContent && rssContent === undefined) return;
 
     let cancelled = false;
     setLoading(true);
@@ -355,7 +670,7 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
       .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [post.url, post.hasRssContent, post._id, rssContent, fetchArticle]);
+  }, [post.url, post.hasRssContent, post.guid, post.rssContent, fetchArticle]);
 
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [article]);
 
@@ -372,7 +687,7 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => toggleStar({ postId: post._id })}
+            onClick={() => toggleStar({ guid: post.guid, feedId: post.feedId })}
             className="p-2 rounded-lg transition-colors"
             style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
           >
@@ -552,152 +867,6 @@ function SidebarItem({ label, icon, count, active, onClick }: {
       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
       {count !== undefined && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{count}</span>}
     </button>
-  );
-}
-
-/* ──────────────────── Header ──────────────────── */
-
-function Header({ onMenuClick, filter }: { onMenuClick: () => void; filter: Filter }) {
-  const refreshAll = useAction(api.feedActions.refreshAll);
-  const folders = useQuery(api.folders.list, {});
-  const feeds = useQuery(api.feeds.list, {});
-  const [refreshing, setRefreshing] = useState(false);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try { await refreshAll({}); } catch (e) { console.error(e); }
-    setRefreshing(false);
-  };
-
-  let title = "All Posts";
-  if (filter.type === "starred") title = "Starred";
-  else if (filter.type === "history") title = "History";
-  else if (filter.type === "folder") title = folders?.find((f) => f._id === filter.folderId)?.name ?? "Folder";
-  else if (filter.type === "feed") title = feeds?.find((f) => f._id === filter.feedId)?.title ?? "Feed";
-
-  return (
-    <header className="header-bar">
-      <button onClick={onMenuClick} className="lg:hidden p-2 -ml-2" style={{ color: "var(--text-secondary)" }}>
-        <List size={24} />
-      </button>
-      <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>{title}</h2>
-      <button onClick={handleRefresh} disabled={refreshing} className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}>
-        <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} style={{ display: "inline", marginRight: 4 }} />
-        {refreshing ? "Refreshing…" : "Refresh"}
-      </button>
-    </header>
-  );
-}
-
-/* ──────────────────── Post List ──────────────────── */
-
-function PostList({ filter, onOpenPost, onFilterFeed, savedScrollTop }: {
-  filter: Filter;
-  onOpenPost: (post: ReaderPost) => void;
-  onFilterFeed: (feedId: Id<"brFeeds">) => void;
-  savedScrollTop: React.MutableRefObject<number>;
-}) {
-  const posts = useQuery(api.posts.list, {
-    feedId: filter.type === "feed" ? filter.feedId : undefined,
-    folderId: filter.type === "folder" ? filter.folderId : undefined,
-    starredOnly: filter.type === "starred" ? true : undefined,
-    historyOnly: filter.type === "history" ? true : undefined,
-    limit: 200,
-  });
-
-  const markRead = useMutation(api.posts.markRead);
-  const toggleStar = useMutation(api.posts.toggleStar);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const handleScroll = useCallback(() => {
-    if (scrollRef.current) savedScrollTop.current = scrollRef.current.scrollTop;
-  }, [savedScrollTop]);
-
-  useEffect(() => {
-    if (posts && posts.length > 0 && scrollRef.current && savedScrollTop.current > 0) {
-      scrollRef.current.scrollTop = savedScrollTop.current;
-    }
-  }, [posts, savedScrollTop]);
-
-  if (!posts) return <div className="flex-1 flex items-center justify-center text-muted"><div className="animate-pulse">Loading…</div></div>;
-  if (posts.length === 0) return <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet. Add some feeds or hit refresh!</p></div>;
-
-  return (
-    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-      <div className="feed-list">
-        {posts.map((post, i) => (
-          <article key={post._id}>
-            <div
-              className="post-card group"
-              onClick={() => {
-                if (!post.isRead) markRead({ postId: post._id });
-                onOpenPost({
-                  _id: post._id,
-                  title: post.title,
-                  url: post.url,
-                  feedTitle: post.feedTitle,
-                  feedHtmlUrl: post.feedHtmlUrl,
-                  feedImageUrl: post.feedImageUrl,
-                  feedBrandColor: post.feedBrandColor,
-                  publishedAt: post.publishedAt,
-                  isStarred: post.isStarred,
-                  isPaywalled: post.isPaywalled,
-                  hasRssContent: post.hasRssContent,
-                });
-              }}
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <button
-                    className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5 mb-2"
-                    onClick={(e) => { e.stopPropagation(); onFilterFeed(post.feedId); }}
-                  >
-                    <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
-                    <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-accent" />
-                  </button>
-
-                  <h3
-                    className={`font-semibold text-base lg:text-lg leading-snug group-hover:text-accent transition-colors line-clamp-2 ${post.content ? "mb-1.5" : "mb-4"}`}
-                    style={{ fontFamily: "var(--font-serif)" }}
-                  >
-                    {decodeEntities(post.title)}
-                  </h3>
-
-                  {post.content && (
-                    <p className="text-sm text-secondary leading-relaxed line-clamp-2 mb-4">
-                      {decodeEntities(post.content.slice(0, 150))}
-                    </p>
-                  )}
-                </div>
-
-                {post.imageUrl && (
-                  <img src={post.imageUrl} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover flex-shrink-0" loading="lazy" />
-                )}
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-muted">
-                  <span>{formatDate(post.publishedAt)}</span>
-                  {post.wordCount && post.wordCount > 0 && (
-                    <><span>·</span><span>{readingTime(post.wordCount)}</span></>
-                  )}
-                  {post.isPaywalled && (
-                    <><span>·</span><LockSimple size={12} weight="fill" /></>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleStar({ postId: post._id }); }}
-                  className="p-1 rounded-lg transition-colors"
-                  style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
-                >
-                  <Star size={16} weight={post.isStarred ? "fill" : "regular"} />
-                </button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </div>
   );
 }
 

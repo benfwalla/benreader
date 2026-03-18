@@ -1,4 +1,4 @@
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const list = query({
@@ -46,71 +46,15 @@ export const remove = mutation({
   args: { feedId: v.id("brFeeds") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const posts = await ctx.db
-      .query("brPosts")
+    // Clean up post states for this feed
+    const states = await ctx.db
+      .query("brPostState")
       .withIndex("by_feed", (q) => q.eq("feedId", args.feedId))
       .collect();
-    for (const post of posts) {
-      await ctx.db.delete(post._id);
+    for (const state of states) {
+      await ctx.db.delete(state._id);
     }
     await ctx.db.delete(args.feedId);
-    return null;
-  },
-});
-
-export const upsertPosts = internalMutation({
-  args: {
-    feedId: v.id("brFeeds"),
-    posts: v.array(
-      v.object({
-        title: v.string(),
-        url: v.string(),
-        content: v.optional(v.string()),
-        imageUrl: v.optional(v.string()),
-        publishedAt: v.number(),
-        guid: v.string(),
-        author: v.optional(v.string()),
-        isPaywalled: v.boolean(),
-        wordCount: v.optional(v.number()),
-        rssContent: v.optional(v.string()),
-      })
-    ),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    for (const post of args.posts) {
-      const existing = await ctx.db
-        .query("brPosts")
-        .withIndex("by_guid", (q) => q.eq("guid", post.guid))
-        .first();
-
-      if (existing) {
-        // Update fields that may have been fixed/changed
-        const patch: Record<string, any> = {};
-        if (existing.isPaywalled !== post.isPaywalled) patch.isPaywalled = post.isPaywalled;
-        if ((!existing.url || existing.url === "") && post.url) patch.url = post.url;
-        if (!existing.rssContent && post.rssContent) patch.rssContent = post.rssContent;
-        if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
-      } else {
-        await ctx.db.insert("brPosts", {
-          feedId: args.feedId,
-          title: post.title,
-          url: post.url,
-          content: post.content,
-          imageUrl: post.imageUrl,
-          publishedAt: post.publishedAt,
-          isRead: false,
-          isStarred: false,
-          isPaywalled: post.isPaywalled,
-          guid: post.guid,
-          author: post.author,
-          wordCount: post.wordCount,
-          rssContent: post.rssContent,
-        });
-      }
-    }
-
-    await ctx.db.patch(args.feedId, { lastFetchedAt: Date.now() });
     return null;
   },
 });
