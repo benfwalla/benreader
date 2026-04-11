@@ -760,6 +760,21 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
               }}
             />
           )}
+
+          {!loading && (
+            <div className="flex justify-center pt-8 mt-8 border-t" style={{ borderColor: "var(--border)" }}>
+              <button
+                onClick={onClose}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                style={{ color: "var(--text-muted)", background: "var(--bg-secondary)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+              >
+                <ArrowLeft size={16} />
+                Back to feed
+              </button>
+            </div>
+          )}
         </article>
       </div>
     </div>
