@@ -17,28 +17,6 @@ export default defineSchema({
     lastFetchedAt: v.optional(v.number()),
   }).index("by_folder", ["folderId"]),
 
-  brPosts: defineTable({
-    feedId: v.id("brFeeds"),
-    title: v.string(),
-    url: v.string(),
-    content: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
-    publishedAt: v.number(),
-    isRead: v.boolean(),
-    readAt: v.optional(v.number()),
-    isStarred: v.boolean(),
-    isPaywalled: v.boolean(),
-    guid: v.string(),
-    author: v.optional(v.string()),
-    wordCount: v.optional(v.number()),
-    rssContent: v.optional(v.string()),
-  })
-    .index("by_feed", ["feedId", "publishedAt"])
-    .index("by_starred", ["isStarred", "publishedAt"])
-    .index("by_read", ["isRead", "readAt"])
-    .index("by_publishedAt", ["publishedAt"])
-    .index("by_guid", ["guid"]),
-
   brPostState: defineTable({
     guid: v.string(),
     feedId: v.id("brFeeds"),

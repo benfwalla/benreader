@@ -133,16 +133,6 @@ export const refreshFeed = action({
   },
 });
 
-// Keep refreshAll as a no-op for the cron (feeds are fetched client-side now)
-export const refreshAll = action({
-  args: {},
-  returns: v.null(),
-  handler: async () => {
-    // No-op: feeds are fetched on demand by the client
-    return null;
-  },
-});
-
 // ─── RSS Parsing (shared logic) ───
 
 async function parseFeedXml(xmlUrl: string) {
