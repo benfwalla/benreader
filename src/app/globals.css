@@ -457,21 +457,6 @@ h1, h2, h3, h4, h5, h6 {
   100% { background-position: -200% 0; }
 }
 
-/* Swipe-up-to-close hint — only shown on touch devices */
-.swipe-hint {
-  display: none;
-  font-size: 12px;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
-  opacity: 0.7;
-}
-
-@media (hover: none) {
-  .swipe-hint {
-    display: block;
-  }
-}
-
 /* Error state */
 .reader-error {
   text-align: center;

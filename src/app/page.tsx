@@ -397,6 +397,7 @@ export default function Home() {
   const [readerVisible, setReaderVisible] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const readerPostRef = useRef<ReaderPost | null>(null);
+  const readerPanelRef = useRef<HTMLDivElement>(null);
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
   const bgColor = useQuery(api.settings.get, { key: "bgColor" });
@@ -515,10 +516,11 @@ export default function Home() {
         </div>
         {readerPost && (
           <div
+            ref={readerPanelRef}
             className="slide-reader"
             style={{ transform: readerVisible ? "translateX(0)" : "translateX(100%)" }}
           >
-            <ArticleReader key={readerPost.guid} post={readerPost} onClose={closePost} />
+            <ArticleReader key={readerPost.guid} post={readerPost} onClose={closePost} panelRef={readerPanelRef} />
           </div>
         )}
       </main>
@@ -698,7 +700,7 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
 
 /* ──────────────────── Article Reader ──────────────────── */
 
-function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => void }) {
+function ArticleReader({ post, onClose, panelRef }: { post: ReaderPost; onClose: () => void; panelRef: React.RefObject<HTMLDivElement | null> }) {
   const fetchArticle = useAction(api.articles.fetch);
   const toggleStar = useMutation(api.posts.toggleStar);
   const [article, setArticle] = useState<{
@@ -713,36 +715,63 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
   const [starred, setStarred] = useState(post.isStarred);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Swipe up past the end of the article to go back.
-  // pull lives in the ref too: state is stale in onTouchEnd during a fast flick
-  const [pull, setPull] = useState(0);
-  const touchState = useRef({ startY: 0, pull: 0, eligible: false, fired: false });
-  const atBottom = () => {
-    const el = contentRef.current;
-    return !!el && el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
-  };
-
   const handleStar = () => {
     setStarred((s) => !s);
     toggleStar({ guid: post.guid, feedId: post.feedId });
   };
 
+  // Swipe right anywhere to go back, iOS-style: the panel follows the finger,
+  // then commits (close) or snaps back on release. The panel is driven via
+  // direct DOM writes — no re-renders during the drag.
+  const swipe = useRef({ x0: 0, y0: 0, t0: 0, axis: null as null | "h" | "v", blocked: false, fired: false });
+
+  // Don't hijack swipes meant to scroll a code block / table back to the left
+  const inScrolledXContainer = (target: EventTarget | null): boolean => {
+    let el = target instanceof HTMLElement ? target : null;
+    while (el && el !== panelRef.current) {
+      if (el.scrollLeft > 0) return true;
+      el = el.parentElement;
+    }
+    return false;
+  };
+
   const onTouchStart = (e: React.TouchEvent) => {
-    touchState.current = { startY: e.touches[0].clientY, pull: 0, eligible: !loading && atBottom(), fired: false };
+    swipe.current = {
+      x0: e.touches[0].clientX,
+      y0: e.touches[0].clientY,
+      t0: performance.now(),
+      axis: null,
+      blocked: inScrolledXContainer(e.target),
+      fired: false,
+    };
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    const st = touchState.current;
-    if (!st.eligible || st.fired) return;
-    st.pull = atBottom() ? Math.max(0, Math.min(140, st.startY - e.touches[0].clientY)) : 0;
-    setPull(st.pull);
-  };
-  const onTouchEnd = () => {
-    const st = touchState.current;
-    if (st.eligible && !st.fired && st.pull > 80) {
-      st.fired = true;
-      onClose();
+    const s = swipe.current;
+    const el = panelRef.current;
+    if (s.blocked || s.fired || !el) return;
+    const dx = e.touches[0].clientX - s.x0;
+    const dy = e.touches[0].clientY - s.y0;
+    if (!s.axis) {
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+      s.axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      if (s.axis === "h") el.style.transition = "none";
     }
-    setPull(0);
+    if (s.axis !== "h") return;
+    el.style.transform = `translateX(${Math.max(0, dx)}px)`;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const s = swipe.current;
+    const el = panelRef.current;
+    if (s.axis !== "h" || s.blocked || s.fired || !el) return;
+    const dx = e.changedTouches[0].clientX - s.x0;
+    const dt = performance.now() - s.t0;
+    el.style.transition = "";
+    if (dx > el.clientWidth * 0.3 || (dx > 60 && dx / dt > 0.5)) {
+      s.fired = true;
+      onClose(); // re-render sets translateX(100%) and animates out from here
+    } else {
+      el.style.transform = "translateX(0)";
+    }
   };
 
   useEffect(() => {
@@ -783,10 +812,9 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
   return (
     <div
       className="flex flex-col h-full"
-      style={{
-        transform: pull ? `translateY(-${Math.round(pull / 2.5)}px)` : undefined,
-        transition: pull ? "none" : "transform 0.2s ease",
-      }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
     >
       <header className="reader-header">
         <button onClick={onClose} className="reader-back-btn">
@@ -811,13 +839,7 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
         </div>
       </header>
 
-      <div
-        ref={contentRef}
-        className="flex-1 overflow-y-auto pb-20 lg:pb-8"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
+      <div ref={contentRef} className="flex-1 overflow-y-auto pb-20 lg:pb-8">
         <article className="reader-article">
           <div className="reader-meta">
             <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-title hover:underline">
@@ -879,23 +901,6 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
             />
           )}
 
-          {!loading && (
-            <div className="flex flex-col items-center gap-3 pt-8 mt-8 border-t" style={{ borderColor: "var(--border)" }}>
-              <button
-                onClick={onClose}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                style={{ color: "var(--text-muted)", background: "var(--bg-secondary)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
-              >
-                <ArrowLeft size={16} />
-                Back to feed
-              </button>
-              <span className="swipe-hint" style={{ opacity: pull ? Math.min(1, pull / 80) : undefined }}>
-                ↑ swipe up to go back
-              </span>
-            </div>
-          )}
         </article>
       </div>
     </div>
