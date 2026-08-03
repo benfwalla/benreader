@@ -1,11 +1,51 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { snapshotValidator } from "./schema";
 
-// List post states — used by frontend to merge with client-fetched RSS data
+// List post states — used by frontend to merge with client-fetched RSS data.
+// Snapshot payloads are stripped; the starred view loads them separately.
 export const listStates = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("brPostState").collect();
+    const states = await ctx.db.query("brPostState").collect();
+    return states.map((s) => ({
+      guid: s.guid,
+      feedId: s.feedId,
+      isRead: s.isRead,
+      isStarred: s.isStarred,
+      readAt: s.readAt,
+      hasSnapshot: s.snapshot !== undefined,
+    }));
+  },
+});
+
+// Snapshots of starred posts — keeps stars visible after they age out of the RSS window
+export const listStarredSnapshots = query({
+  args: {},
+  handler: async (ctx) => {
+    const starred = await ctx.db
+      .query("brPostState")
+      .withIndex("by_starred", (q) => q.eq("isStarred", true))
+      .collect();
+    return starred
+      .filter((s) => s.snapshot)
+      .map((s) => ({ guid: s.guid, feedId: s.feedId, snapshot: s.snapshot! }));
+  },
+});
+
+// Attach a snapshot to an already-starred post that predates snapshotting
+export const saveSnapshot = mutation({
+  args: { guid: v.string(), snapshot: snapshotValidator },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("brPostState")
+      .withIndex("by_guid", (q) => q.eq("guid", args.guid))
+      .first();
+    if (existing && existing.isStarred && !existing.snapshot) {
+      await ctx.db.patch(existing._id, { snapshot: args.snapshot });
+    }
+    return null;
   },
 });
 
@@ -33,7 +73,7 @@ export const markRead = mutation({
 });
 
 export const toggleStar = mutation({
-  args: { guid: v.string(), feedId: v.id("brFeeds") },
+  args: { guid: v.string(), feedId: v.id("brFeeds"), snapshot: v.optional(snapshotValidator) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -41,13 +81,18 @@ export const toggleStar = mutation({
       .withIndex("by_guid", (q) => q.eq("guid", args.guid))
       .first();
     if (existing) {
-      await ctx.db.patch(existing._id, { isStarred: !existing.isStarred });
+      const starring = !existing.isStarred;
+      await ctx.db.patch(existing._id, {
+        isStarred: starring,
+        snapshot: starring ? args.snapshot : undefined,
+      });
     } else {
       await ctx.db.insert("brPostState", {
         guid: args.guid,
         feedId: args.feedId,
         isRead: false,
         isStarred: true,
+        snapshot: args.snapshot,
       });
     }
     return null;

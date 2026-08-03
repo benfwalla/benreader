@@ -123,6 +123,22 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Pull-to-refresh indicator */
+.ptr {
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: height 0.2s ease, opacity 0.2s ease;
+}
+.ptr.refreshing {
+  height: 48px;
+  opacity: 1;
+}
+
 /* Prevent overscroll from leaking to parent containers (iOS PWA fix) */
 .overflow-y-auto {
   overscroll-behavior: contain;

@@ -67,6 +67,20 @@ type ReaderPost = {
   rssContent?: string;
 };
 
+// Snapshot stored server-side when starring, so stars outlive the RSS window
+function snapshotOf(p: RssPost) {
+  return {
+    title: p.title,
+    url: p.url,
+    publishedAt: p.publishedAt,
+    content: p.content,
+    imageUrl: p.imageUrl,
+    wordCount: p.wordCount,
+    isPaywalled: p.isPaywalled,
+    rssContent: p.rssContent,
+  };
+}
+
 /* ──────────────────── Helpers ──────────────────── */
 
 function decodeEntities(text: string): string {
@@ -183,6 +197,42 @@ function applyTheme(bgHex: string) {
 const feedCache = new Map<string, { posts: RssPost[]; fetchedAt: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Posts are mirrored to IndexedDB so a cold launch paints the last-known list
+// instantly, then revalidates in the background.
+function openPostsDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("benreader", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("feedPosts");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbLoadAll(): Promise<Map<string, { posts: RssPost[]; fetchedAt: number }>> {
+  const db = await openPostsDb();
+  return new Promise((resolve, reject) => {
+    const store = db.transaction("feedPosts").objectStore("feedPosts");
+    const keysReq = store.getAllKeys();
+    const valsReq = store.getAll();
+    valsReq.onsuccess = () => {
+      const map = new Map<string, { posts: RssPost[]; fetchedAt: number }>();
+      keysReq.result.forEach((key, i) => map.set(String(key), valsReq.result[i]));
+      resolve(map);
+    };
+    valsReq.onerror = () => reject(valsReq.error);
+  });
+}
+
+function idbWrite(feedId: string, value: { posts: RssPost[]; fetchedAt: number } | null) {
+  openPostsDb()
+    .then((db) => {
+      const store = db.transaction("feedPosts", "readwrite").objectStore("feedPosts");
+      if (value) store.put(value, feedId);
+      else store.delete(feedId);
+    })
+    .catch(() => {});
+}
+
 /* ──────────────────── Modal ──────────────────── */
 
 function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
@@ -235,9 +285,30 @@ function pathToFilter(path: string): Filter | null {
 function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: string; htmlUrl: string; folderId: Id<"brFolders">; imageUrl?: string; brandColor?: string }> | undefined, filter: Filter) {
   const fetchFeed = useAction(api.feedActions.fetchFeed);
   const postStates = useQuery(api.posts.listStates, {});
+  const starredSnapshots = useQuery(api.posts.listStarredSnapshots, filter.type === "starred" ? {} : "skip");
+  const saveSnapshot = useMutation(api.posts.saveSnapshot);
   const [rssPosts, setRssPosts] = useState<Map<string, RssPost[]>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
   const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // Paint the last-known posts from IndexedDB immediately; fetchedAt stays 0 in
+  // the session cache so every fresh page load still revalidates in background
+  useEffect(() => {
+    idbLoadAll()
+      .then((entries) => {
+        setRssPosts((prev) => {
+          const next = new Map(prev);
+          for (const [id, val] of entries) {
+            if (!next.has(id)) next.set(id, val.posts);
+            if (!feedCache.has(id)) feedCache.set(id, { posts: val.posts, fetchedAt: 0 });
+          }
+          return next;
+        });
+      })
+      .catch(() => {})
+      .finally(() => setHydrated(true));
+  }, []);
 
   // Determine which feeds to fetch based on filter
   const feedsToFetch = useMemo(() => {
@@ -255,8 +326,10 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
     }
   }, [feeds, filter]);
 
-  // Fetch RSS for required feeds
+  // Fetch RSS for required feeds (after IndexedDB hydration so stale data can't
+  // overwrite a fresh fetch)
   useEffect(() => {
+    if (!hydrated) return;
     if (!feedsToFetch.length) {
       setLoading(false);
       return;
@@ -275,7 +348,9 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
         }
         try {
           const posts = await fetchFeed({ feedId: feed._id });
-          feedCache.set(feed._id, { posts, fetchedAt: Date.now() });
+          const entry = { posts, fetchedAt: Date.now() };
+          feedCache.set(feed._id, entry);
+          idbWrite(feed._id, entry);
           fetched.set(feed._id, posts);
         } catch (e) {
           console.error(`Failed to fetch ${feed.title}:`, e);
@@ -299,14 +374,14 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
     fetchAll();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedsToFetch.map(f => f._id).join(","), refreshCounter]);
+  }, [feedsToFetch.map(f => f._id).join(","), refreshCounter, hydrated]);
 
   // Build state lookup
   const stateByGuid = useMemo(() => {
-    const map = new Map<string, { isRead: boolean; isStarred: boolean; readAt?: number }>();
+    const map = new Map<string, { isRead: boolean; isStarred: boolean; readAt?: number; hasSnapshot: boolean }>();
     if (postStates) {
       for (const s of postStates) {
-        map.set(s.guid, { isRead: s.isRead, isStarred: s.isStarred, readAt: s.readAt });
+        map.set(s.guid, { isRead: s.isRead, isStarred: s.isStarred, readAt: s.readAt, hasSnapshot: s.hasSnapshot });
       }
     }
     return map;
@@ -346,14 +421,46 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
     return allMerged;
   }, [rssPosts, stateByGuid, feeds]);
 
+  // Starred posts that predate snapshotting become durable the next time they're seen in RSS
+  const backfilledGuids = useRef(new Set<string>());
+  useEffect(() => {
+    for (const p of mergedPosts) {
+      if (p.isStarred && stateByGuid.get(p.guid)?.hasSnapshot === false && !backfilledGuids.current.has(p.guid)) {
+        backfilledGuids.current.add(p.guid);
+        saveSnapshot({ guid: p.guid, snapshot: snapshotOf(p) });
+      }
+    }
+  }, [mergedPosts, stateByGuid, saveSnapshot]);
+
   // Filter and sort
   const filteredPosts = useMemo(() => {
     let posts = mergedPosts;
 
     switch (filter.type) {
-      case "starred":
+      case "starred": {
         posts = posts.filter((p) => p.isStarred);
+        // Add snapshot-only stars — posts that have aged out of their RSS feed
+        const rssGuids = new Set(posts.map((p) => p.guid));
+        const feedMap = new Map((feeds ?? []).map((f) => [f._id, f]));
+        for (const s of starredSnapshots ?? []) {
+          if (rssGuids.has(s.guid)) continue;
+          const feed = feedMap.get(s.feedId);
+          posts.push({
+            ...s.snapshot,
+            isPaywalled: s.snapshot.isPaywalled ?? false,
+            guid: s.guid,
+            feedId: s.feedId,
+            feedTitle: feed?.title ?? "",
+            feedHtmlUrl: feed?.htmlUrl || undefined,
+            feedImageUrl: feed?.imageUrl,
+            feedBrandColor: feed?.brandColor,
+            isRead: stateByGuid.get(s.guid)?.isRead ?? false,
+            isStarred: true,
+            hasRssContent: !!s.snapshot.rssContent,
+          });
+        }
         break;
+      }
       case "history":
         posts = posts.filter((p) => p.isRead);
         posts.sort((a, b) => {
@@ -372,7 +479,7 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
 
     posts.sort((a, b) => b.publishedAt - a.publishedAt);
     return posts.slice(0, 200);
-  }, [mergedPosts, filter, stateByGuid]);
+  }, [mergedPosts, filter, stateByGuid, starredSnapshots, feeds]);
 
   const refresh = useCallback(() => {
     // Clear cache for feeds in view
@@ -586,6 +693,48 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
     if (!loading) setRefreshing(false);
   }, [loading]);
 
+  // Pull-to-refresh: drag down from the top of the list. The indicator is
+  // driven via direct DOM writes so the list doesn't re-render per move.
+  const ptrIndicatorRef = useRef<HTMLDivElement>(null);
+  const ptr = useRef({ y0: 0, active: false, pull: 0 });
+
+  const onPtrTouchStart = (e: React.TouchEvent) => {
+    ptr.current = {
+      y0: e.touches[0].clientY,
+      active: !refreshing && (scrollRef.current?.scrollTop ?? 1) <= 0,
+      pull: 0,
+    };
+  };
+  const onPtrTouchMove = (e: React.TouchEvent) => {
+    const p = ptr.current;
+    const el = ptrIndicatorRef.current;
+    if (!p.active || !el) return;
+    if ((scrollRef.current?.scrollTop ?? 0) > 0) {
+      p.active = false;
+      p.pull = 0;
+      el.style.height = "";
+      el.style.opacity = "";
+      return;
+    }
+    p.pull = Math.max(0, Math.min(100, (e.touches[0].clientY - p.y0) * 0.5));
+    el.style.transition = "none";
+    el.style.height = `${p.pull}px`;
+    el.style.opacity = String(Math.min(1, p.pull / 56));
+    (el.firstElementChild as HTMLElement).style.transform = `rotate(${p.pull * 3.6}deg)`;
+  };
+  const onPtrTouchEnd = () => {
+    const p = ptr.current;
+    const el = ptrIndicatorRef.current;
+    if (el) {
+      el.style.transition = "";
+      el.style.height = "";
+      el.style.opacity = "";
+      (el.firstElementChild as HTMLElement).style.transform = "";
+    }
+    if (p.active && p.pull > 56) handleRefresh();
+    p.active = false;
+  };
+
   let title = "All Posts";
   if (filter.type === "starred") title = "Starred";
   else if (filter.type === "history") title = "History";
@@ -605,17 +754,23 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
           <List size={24} />
         </button>
         <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>{title}</h2>
-        <button onClick={handleRefresh} disabled={refreshing} className="btn-accent" style={{ padding: 8, display: "flex" }} title="Refresh">
-          <ArrowsClockwise size={16} className={refreshing ? "animate-spin" : ""} />
-        </button>
       </header>
 
       {loading && !posts.length ? (
         <div className="flex-1 flex items-center justify-center text-muted"><div className="animate-pulse">Loading…</div></div>
       ) : posts.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet. Add some feeds or hit refresh!</p></div>
+        <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet</p></div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto"
+          onTouchStart={onPtrTouchStart}
+          onTouchMove={onPtrTouchMove}
+          onTouchEnd={onPtrTouchEnd}
+        >
+          <div ref={ptrIndicatorRef} className={`ptr ${refreshing ? "refreshing" : ""}`}>
+            <ArrowsClockwise size={18} className={refreshing ? "animate-spin" : ""} />
+          </div>
           <div className="feed-list">
             {posts.map((post) => (
               <article key={post.guid}>
@@ -647,7 +802,7 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
                         onClick={(e) => { e.stopPropagation(); onFilterFeed(post.feedId); }}
                       >
                         <BlogIcon htmlUrl={post.feedHtmlUrl} imageUrl={post.feedImageUrl} size={14} />
-                        <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-accent" />
+                        <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-secondary" />
                       </button>
 
                       <h3
@@ -680,7 +835,7 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
                       )}
                     </div>
                     <button
-                      onClick={(e) => { e.stopPropagation(); toggleStar({ guid: post.guid, feedId: post.feedId }); }}
+                      onClick={(e) => { e.stopPropagation(); toggleStar({ guid: post.guid, feedId: post.feedId, snapshot: snapshotOf(post) }); }}
                       className="p-1 rounded-lg transition-colors"
                       style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
                     >
@@ -716,7 +871,7 @@ function ArticleReader({ post, onClose, panelRef }: { post: ReaderPost; onClose:
 
   const handleStar = () => {
     setStarred((s) => !s);
-    toggleStar({ guid: post.guid, feedId: post.feedId });
+    toggleStar({ guid: post.guid, feedId: post.feedId, snapshot: snapshotOf(post) });
   };
 
   // Swipe right anywhere to go back, iOS-style: the panel follows the finger,
@@ -822,7 +977,7 @@ function ArticleReader({ post, onClose, panelRef }: { post: ReaderPost; onClose:
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <BlogIcon htmlUrl={post.feedHtmlUrl} imageUrl={post.feedImageUrl} size={18} />
-          <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-sm text-accent font-medium truncate" />
+          <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-sm text-secondary font-medium truncate" />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -924,9 +1079,30 @@ function Sidebar({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
+  const removeFeed = useMutation(api.feeds.remove);
 
   const getFeedsInFolder = (folderId: Id<"brFolders">) =>
     feeds?.filter((f) => f.folderId === folderId) ?? [];
+
+  // Long-press (touch) or right-click removes a feed
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressClick = useRef(false);
+
+  const confirmRemove = (feed: { _id: Id<"brFeeds">; title: string }) => {
+    cancelPress();
+    suppressClick.current = true;
+    if (window.confirm(`Remove "${feed.title}"?`)) {
+      removeFeed({ feedId: feed._id });
+      feedCache.delete(feed._id);
+      idbWrite(feed._id, null);
+      if (filter.type === "feed" && filter.feedId === feed._id) setFilter({ type: "all" });
+    }
+  };
+
+  const cancelPress = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  };
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders((prev) => {
@@ -971,7 +1147,17 @@ function Sidebar({
                 getFeedsInFolder(folder._id).map((feed) => (
                   <button
                     key={feed._id}
-                    onClick={() => setFilter({ type: "feed", feedId: feed._id })}
+                    onClick={() => {
+                      if (suppressClick.current) { suppressClick.current = false; return; }
+                      setFilter({ type: "feed", feedId: feed._id });
+                    }}
+                    onContextMenu={(e) => { e.preventDefault(); confirmRemove(feed); }}
+                    onTouchStart={() => {
+                      suppressClick.current = false;
+                      pressTimer.current = setTimeout(() => confirmRemove(feed), 600);
+                    }}
+                    onTouchMove={cancelPress}
+                    onTouchEnd={cancelPress}
                     className="sidebar-sub-item"
                   >
                     <BlogIcon htmlUrl={feed.htmlUrl} imageUrl={feed.imageUrl} size={14} />
