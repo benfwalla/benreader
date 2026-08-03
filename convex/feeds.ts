@@ -33,11 +33,30 @@ export const add = mutation({
   },
 });
 
-export const updateImage = mutation({
-  args: { feedId: v.id("brFeeds"), imageUrl: v.string() },
+export const updateMeta = mutation({
+  args: {
+    feedId: v.id("brFeeds"),
+    title: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.feedId, { imageUrl: args.imageUrl });
+    const { feedId, ...fields } = args;
+    const patch = Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== undefined)
+    );
+    if (Object.keys(patch).length) await ctx.db.patch(feedId, patch);
+    return null;
+  },
+});
+
+// brandColor: hex string to set, or omit to clear a bad/stale color
+export const setBrandColor = mutation({
+  args: { feedId: v.id("brFeeds"), brandColor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.feedId, { brandColor: args.brandColor });
     return null;
   },
 });

@@ -9,30 +9,6 @@ export const listStates = query({
   },
 });
 
-// Get states for starred posts only
-export const listStarred = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db
-      .query("brPostState")
-      .withIndex("by_starred", (q) => q.eq("isStarred", true))
-      .collect();
-  },
-});
-
-// Get states for read posts (history)
-export const listHistory = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const limit = args.limit ?? 200;
-    const all = await ctx.db.query("brPostState").collect();
-    return all
-      .filter((s) => s.isRead)
-      .sort((a, b) => (b.readAt ?? 0) - (a.readAt ?? 0))
-      .slice(0, limit);
-  },
-});
-
 export const markRead = mutation({
   args: { guid: v.string(), feedId: v.id("brFeeds") },
   returns: v.null(),

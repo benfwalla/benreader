@@ -70,15 +70,16 @@ type ReaderPost = {
 /* ──────────────────── Helpers ──────────────────── */
 
 function decodeEntities(text: string): string {
+  // &amp; must decode last so "&amp;lt;" yields "&lt;" instead of "<"
   return text
     .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
 }
 
 function formatDate(ts: number): string {
@@ -106,10 +107,16 @@ function readingTime(wordCount: number): string {
   return `${Math.max(1, Math.round(wordCount / 238))} min read`;
 }
 
+function faviconUrl(htmlUrl: string, size: number): string | undefined {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(htmlUrl).hostname}&sz=${size}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function BlogIcon({ htmlUrl, imageUrl, size = 16 }: { htmlUrl?: string; imageUrl?: string; size?: number }) {
-  const src =
-    imageUrl ||
-    (htmlUrl ? `https://www.google.com/s2/favicons?domain=${new URL(htmlUrl).hostname}&sz=${size * 2}` : undefined);
+  const src = imageUrl || (htmlUrl ? faviconUrl(htmlUrl, size * 2) : undefined);
   if (!src) return null;
   return (
     <img
@@ -129,6 +136,47 @@ function FeedName({ name, color, className }: { name: string; color?: string; cl
   return <span className={className} style={color ? { color } : undefined}>{name}</span>;
 }
 
+/* ──────────────────── Themes ──────────────────── */
+
+// Keyed by bg-primary hex — the value stored in settings since the beginning
+const THEMES: Record<string, { name: string; vars: Record<string, string> }> = {
+  "#F5F0E8": {
+    name: "Warm Beige",
+    vars: { "--bg-primary": "#F5F0E8", "--bg-secondary": "#EDE7DB", "--bg-card": "#FDFBF7", "--text-primary": "#2C2418", "--text-secondary": "#6B5D4D", "--text-muted": "#9B8E7E", "--border": "#DDD5C8" },
+  },
+  "#F8F9FA": {
+    name: "Cool White",
+    vars: { "--bg-primary": "#F8F9FA", "--bg-secondary": "#EBEDEF", "--bg-card": "#FFFFFF", "--text-primary": "#24292E", "--text-secondary": "#57606A", "--text-muted": "#8B949E", "--border": "#D8DEE4" },
+  },
+  "#E8EDE5": {
+    name: "Soft Sage",
+    vars: { "--bg-primary": "#E8EDE5", "--bg-secondary": "#DCE3D6", "--bg-card": "#F5F8F2", "--text-primary": "#2A3324", "--text-secondary": "#5C6B52", "--text-muted": "#8A9680", "--border": "#C9D3C0" },
+  },
+  "#F5E8E8": {
+    name: "Pale Rose",
+    vars: { "--bg-primary": "#F5E8E8", "--bg-secondary": "#ECDADA", "--bg-card": "#FCF6F6", "--text-primary": "#362626", "--text-secondary": "#6E5252", "--text-muted": "#A08585", "--border": "#E0CACA" },
+  },
+  "#1A1A2E": {
+    name: "Night",
+    vars: { "--bg-primary": "#1A1A2E", "--bg-secondary": "#24243C", "--bg-card": "#212138", "--text-primary": "#E8E8F2", "--text-secondary": "#B4B4CC", "--text-muted": "#80809E", "--border": "#363652" },
+  },
+  "#2C2418": {
+    name: "Warm Dark",
+    vars: { "--bg-primary": "#2C2418", "--bg-secondary": "#3A3122", "--bg-card": "#362C1D", "--text-primary": "#EFE6D6", "--text-secondary": "#C7B698", "--text-muted": "#97896F", "--border": "#4E4230" },
+  },
+};
+
+function applyTheme(bgHex: string) {
+  const theme = THEMES[bgHex];
+  if (!theme) return;
+  for (const [key, value] of Object.entries(theme.vars)) {
+    document.documentElement.style.setProperty(key, value);
+  }
+  // Restored before first paint by the inline script in layout.tsx
+  localStorage.setItem("themeVars", JSON.stringify(theme.vars));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bgHex);
+}
+
 /* ──────────────────── RSS Cache ──────────────────── */
 
 // Client-side cache for fetched RSS posts per feed
@@ -138,6 +186,12 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 /* ──────────────────── Modal ──────────────────── */
 
 function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -212,33 +266,39 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
     setLoading(true);
 
     const fetchAll = async () => {
-      const newPosts = new Map(rssPosts);
+      const fetched = new Map<string, RssPost[]>();
       const promises = feedsToFetch.map(async (feed) => {
         const cached = feedCache.get(feed._id);
         if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
-          newPosts.set(feed._id, cached.posts);
+          fetched.set(feed._id, cached.posts);
           return;
         }
         try {
           const posts = await fetchFeed({ feedId: feed._id });
           feedCache.set(feed._id, { posts, fetchedAt: Date.now() });
-          newPosts.set(feed._id, posts);
+          fetched.set(feed._id, posts);
         } catch (e) {
           console.error(`Failed to fetch ${feed.title}:`, e);
           // Keep cached data if available
-          if (cached) newPosts.set(feed._id, cached.posts);
+          if (cached) fetched.set(feed._id, cached.posts);
         }
       });
 
       await Promise.all(promises);
       if (!cancelled) {
-        setRssPosts(newPosts);
+        // Functional update: concurrent runs (filter switch mid-fetch) must not clobber each other
+        setRssPosts((prev) => {
+          const next = new Map(prev);
+          for (const [id, posts] of fetched) next.set(id, posts);
+          return next;
+        });
         setLoading(false);
       }
     };
 
     fetchAll();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedsToFetch.map(f => f._id).join(","), refreshCounter]);
 
   // Build state lookup
@@ -258,12 +318,16 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
 
     const feedMap = new Map(feeds.map((f) => [f._id, f]));
     const allMerged: MergedPost[] = [];
+    const seenGuids = new Set<string>();
 
     for (const [feedId, posts] of rssPosts) {
       const feed = feedMap.get(feedId as Id<"brFeeds">);
       if (!feed) continue;
 
       for (const post of posts) {
+        // Guard against duplicate subscriptions serving the same posts
+        if (seenGuids.has(post.guid)) continue;
+        seenGuids.add(post.guid);
         const state = stateByGuid.get(post.guid);
         allMerged.push({
           ...post,
@@ -324,7 +388,7 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
 /* ──────────────────── Main App ──────────────────── */
 
 export default function Home() {
-  const [filter, setFilterState] = useState<Filter | null>(() => pathToFilter(typeof window !== "undefined" ? window.location.pathname : "/"));
+  const [filter, setFilterState] = useState<Filter | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -332,10 +396,10 @@ export default function Home() {
   const [readerPost, setReaderPost] = useState<ReaderPost | null>(null);
   const [readerVisible, setReaderVisible] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
-  const savedScrollTop = useRef(0);
   const readerPostRef = useRef<ReaderPost | null>(null);
   const folders = useQuery(api.folders.list, {});
   const feeds = useQuery(api.feeds.list, {});
+  const bgColor = useQuery(api.settings.get, { key: "bgColor" });
   const markAllRead = useMutation(api.posts.markAllRead);
 
   const setFilter = useCallback((f: Filter) => {
@@ -344,6 +408,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => { readerPostRef.current = readerPost; }, [readerPost]);
+
+  // Restore filter from URL after mount (reading location during render breaks hydration)
+  useEffect(() => {
+    const f = pathToFilter(window.location.pathname);
+    if (f) setFilterState(f);
+  }, []);
+
+  // Apply the saved theme (the inline script in layout.tsx already applied the
+  // localStorage copy pre-paint; this syncs from the source of truth)
+  useEffect(() => {
+    if (bgColor) applyTheme(bgColor);
+  }, [bgColor]);
 
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
@@ -363,7 +439,7 @@ export default function Home() {
   }, []);
 
   const openPost = useCallback((post: ReaderPost) => {
-    window.history.pushState({ post }, "", `?post=${post.guid}`);
+    window.history.pushState({ post }, "", `?post=${encodeURIComponent(post.guid)}`);
     setReaderPost(post);
     requestAnimationFrame(() => setReaderVisible(true));
   }, []);
@@ -404,7 +480,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -434,7 +510,6 @@ export default function Home() {
             feeds={feeds}
             onOpenPost={openPost}
             onFilterFeed={(feedId) => setFilter({ type: "feed", feedId })}
-            savedScrollTop={savedScrollTop}
             onMenuClick={() => setSidebarOpen(true)}
           />
         </div>
@@ -443,7 +518,7 @@ export default function Home() {
             className="slide-reader"
             style={{ transform: readerVisible ? "translateX(0)" : "translateX(100%)" }}
           >
-            <ArticleReader post={readerPost} onClose={closePost} />
+            <ArticleReader key={readerPost.guid} post={readerPost} onClose={closePost} />
           </div>
         )}
       </main>
@@ -486,12 +561,11 @@ export default function Home() {
 
 /* ──────────────────── Combined Header + PostList ──────────────────── */
 
-function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, savedScrollTop, onMenuClick }: {
+function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuClick }: {
   filter: Filter;
   feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: string; htmlUrl: string; folderId: Id<"brFolders">; imageUrl?: string; brandColor?: string }> | undefined;
   onOpenPost: (post: ReaderPost) => void;
   onFilterFeed: (feedId: Id<"brFeeds">) => void;
-  savedScrollTop: React.MutableRefObject<number>;
   onMenuClick: () => void;
 }) {
   const { posts, loading, refresh } = useFeedPosts(feeds, filter);
@@ -501,12 +575,14 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, savedScro
   const folders = useQuery(api.folders.list, {});
   const [refreshing, setRefreshing] = useState(false);
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setRefreshing(true);
     refresh();
-    // Wait a bit for the fetch to complete
-    setTimeout(() => setRefreshing(false), 2000);
   };
+
+  useEffect(() => {
+    if (!loading) setRefreshing(false);
+  }, [loading]);
 
   let title = "All Posts";
   if (filter.type === "starred") title = "Starred";
@@ -514,15 +590,11 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, savedScro
   else if (filter.type === "folder") title = folders?.find((f) => f._id === filter.folderId)?.name ?? "Folder";
   else if (filter.type === "feed") title = feeds?.find((f) => f._id === filter.feedId)?.title ?? "Feed";
 
-  const handleScroll = useCallback(() => {
-    if (scrollRef.current) savedScrollTop.current = scrollRef.current.scrollTop;
-  }, [savedScrollTop]);
-
+  // Each view starts at the top — don't inherit the previous view's scroll offset
+  const filterKey = filterToPath(filter);
   useEffect(() => {
-    if (posts && posts.length > 0 && scrollRef.current && savedScrollTop.current > 0) {
-      scrollRef.current.scrollTop = savedScrollTop.current;
-    }
-  }, [posts, savedScrollTop]);
+    scrollRef.current?.scrollTo(0, 0);
+  }, [filterKey]);
 
   return (
     <>
@@ -542,7 +614,7 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, savedScro
       ) : posts.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-muted gap-2 px-4"><span className="text-4xl">📭</span><p className="text-sm">No posts yet. Add some feeds or hit refresh!</p></div>
       ) : (
-        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="feed-list">
             {posts.map((post) => (
               <article key={post.guid}>
@@ -573,7 +645,7 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, savedScro
                         className="text-xs font-medium truncate hover:underline inline-flex items-center gap-1.5 mb-2"
                         onClick={(e) => { e.stopPropagation(); onFilterFeed(post.feedId); }}
                       >
-                        <BlogIcon htmlUrl={post.feedHtmlUrl} size={14} />
+                        <BlogIcon htmlUrl={post.feedHtmlUrl} imageUrl={post.feedImageUrl} size={14} />
                         <FeedName name={post.feedTitle} color={post.feedBrandColor} className="text-accent" />
                       </button>
 
@@ -637,7 +709,41 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // post is a snapshot, not a live query — track star locally so the button responds
+  const [starred, setStarred] = useState(post.isStarred);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Swipe up past the end of the article to go back.
+  // pull lives in the ref too: state is stale in onTouchEnd during a fast flick
+  const [pull, setPull] = useState(0);
+  const touchState = useRef({ startY: 0, pull: 0, eligible: false, fired: false });
+  const atBottom = () => {
+    const el = contentRef.current;
+    return !!el && el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
+  };
+
+  const handleStar = () => {
+    setStarred((s) => !s);
+    toggleStar({ guid: post.guid, feedId: post.feedId });
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchState.current = { startY: e.touches[0].clientY, pull: 0, eligible: !loading && atBottom(), fired: false };
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    const st = touchState.current;
+    if (!st.eligible || st.fired) return;
+    st.pull = atBottom() ? Math.max(0, Math.min(140, st.startY - e.touches[0].clientY)) : 0;
+    setPull(st.pull);
+  };
+  const onTouchEnd = () => {
+    const st = touchState.current;
+    if (st.eligible && !st.fired && st.pull > 80) {
+      st.fired = true;
+      onClose();
+    }
+    setPull(0);
+  };
 
   useEffect(() => {
     // If we have RSS content, use it directly
@@ -675,7 +781,13 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [article]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="flex flex-col h-full"
+      style={{
+        transform: pull ? `translateY(-${Math.round(pull / 2.5)}px)` : undefined,
+        transition: pull ? "none" : "transform 0.2s ease",
+      }}
+    >
       <header className="reader-header">
         <button onClick={onClose} className="reader-back-btn">
           <ArrowLeft size={20} />
@@ -687,11 +799,11 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => toggleStar({ guid: post.guid, feedId: post.feedId })}
+            onClick={handleStar}
             className="p-2 rounded-lg transition-colors"
-            style={{ color: post.isStarred ? "var(--star-color)" : "var(--text-muted)" }}
+            style={{ color: starred ? "var(--star-color)" : "var(--text-muted)" }}
           >
-            <Star size={20} weight={post.isStarred ? "fill" : "regular"} />
+            <Star size={20} weight={starred ? "fill" : "regular"} />
           </button>
           <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-external-link" title="Open original">
             <ArrowSquareOut size={20} />
@@ -699,7 +811,13 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
         </div>
       </header>
 
-      <div ref={contentRef} className="flex-1 overflow-y-auto pb-20 lg:pb-8">
+      <div
+        ref={contentRef}
+        className="flex-1 overflow-y-auto pb-20 lg:pb-8"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
         <article className="reader-article">
           <div className="reader-meta">
             <a href={post.url} target="_blank" rel="noopener noreferrer" className="reader-title hover:underline">
@@ -762,7 +880,7 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
           )}
 
           {!loading && (
-            <div className="flex justify-center pt-8 mt-8 border-t" style={{ borderColor: "var(--border)" }}>
+            <div className="flex flex-col items-center gap-3 pt-8 mt-8 border-t" style={{ borderColor: "var(--border)" }}>
               <button
                 onClick={onClose}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
@@ -773,6 +891,9 @@ function ArticleReader({ post, onClose }: { post: ReaderPost; onClose: () => voi
                 <ArrowLeft size={16} />
                 Back to feed
               </button>
+              <span className="swipe-hint" style={{ opacity: pull ? Math.min(1, pull / 80) : undefined }}>
+                ↑ swipe up to go back
+              </span>
             </div>
           )}
         </article>
@@ -952,32 +1073,23 @@ function SettingsModal({ onClose, onMarkRead, onMarkUnread }: { onClose: () => v
   const bgColor = useQuery(api.settings.get, { key: "bgColor" });
   const setSetting = useMutation(api.settings.set);
 
-  const colors = [
-    { name: "Warm Beige", value: "#F5F0E8" },
-    { name: "Cool White", value: "#F8F9FA" },
-    { name: "Soft Sage", value: "#E8EDE5" },
-    { name: "Pale Rose", value: "#F5E8E8" },
-    { name: "Night", value: "#1A1A2E" },
-    { name: "Warm Dark", value: "#2C2418" },
-  ];
-
   return (
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-2">Background Color</label>
+          <label className="block text-sm font-medium mb-2">Theme</label>
           <div className="grid grid-cols-3 gap-2">
-            {colors.map((c) => (
+            {Object.entries(THEMES).map(([value, theme]) => (
               <button
-                key={c.value}
+                key={value}
                 onClick={() => {
-                  document.documentElement.style.setProperty("--bg-primary", c.value);
-                  setSetting({ key: "bgColor", value: c.value });
+                  applyTheme(value);
+                  setSetting({ key: "bgColor", value });
                 }}
-                className={`color-swatch ${(bgColor ?? "#F5F0E8") === c.value ? "active" : ""}`}
-                style={{ backgroundColor: c.value, color: c.value === "#1A1A2E" || c.value === "#2C2418" ? "#fff" : "#2C2418" }}
+                className={`color-swatch ${(bgColor ?? "#F5F0E8") === value ? "active" : ""}`}
+                style={{ backgroundColor: value, color: theme.vars["--text-primary"] }}
               >
-                {c.name}
+                {theme.name}
               </button>
             ))}
           </div>

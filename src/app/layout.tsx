@@ -28,7 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the inline theme script mutates <html> style pre-hydration
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -41,6 +42,13 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <script
+          // Restore the saved theme before first paint to avoid a flash of the default theme
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var v=JSON.parse(localStorage.getItem('themeVars')||'null');if(v){for(var k in v)document.documentElement.style.setProperty(k,v[k]);var m=document.querySelector('meta[name=\"theme-color\"]');if(m&&v['--bg-primary'])m.setAttribute('content',v['--bg-primary']);}}catch(e){}",
+          }}
+        />
       </head>
       <body>
         <ConvexClientProvider>{children}</ConvexClientProvider>

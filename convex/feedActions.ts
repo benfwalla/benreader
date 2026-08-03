@@ -63,7 +63,7 @@ const postValidator = v.object({
   rssContent: v.optional(v.string()),
 });
 
-// Fetch a feed's RSS and return parsed posts (no DB writes except feed image)
+// Fetch a feed's RSS and return parsed posts (no DB writes except feed metadata backfill)
 export const fetchFeed = action({
   args: { feedId: v.id("brFeeds") },
   returns: v.array(postValidator),
@@ -72,27 +72,13 @@ export const fetchFeed = action({
     if (!feed) return [];
 
     try {
-      const posts = await parseFeedXml(feed.xmlUrl);
+      const result = await fetchAndParse(feed.xmlUrl);
+      if (!result) return [];
 
-      // Update feed image if missing
-      if (posts.length > 0 && !feed.imageUrl) {
-        const response = await fetch(feed.xmlUrl, {
-          headers: { "User-Agent": "BenReader/1.0" },
-          signal: AbortSignal.timeout(15000),
-        });
-        if (response.ok) {
-          const xml = await response.text();
-          const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
-          const parsed = parser.parse(xml);
-          const channel = parsed.rss?.channel || parsed.feed;
-          const feedImage = channel?.image?.url || channel?.["itunes:image"]?.["@_href"] || channel?.logo || channel?.icon;
-          if (feedImage) {
-            await ctx.runMutation(api.feeds.updateImage, { feedId: args.feedId, imageUrl: String(feedImage) });
-          }
-        }
-      }
+      const meta = buildMetaPatch(feed, result.channel);
+      if (meta) await ctx.runMutation(api.feeds.updateMeta, { feedId: args.feedId, ...meta });
 
-      return posts;
+      return result.posts;
     } catch (e) {
       console.error(`Failed to fetch feed ${feed.title}:`, e);
       return [];
@@ -100,7 +86,7 @@ export const fetchFeed = action({
   },
 });
 
-// Lightweight refresh for when adding a feed — just updates feed image
+// Backfill feed metadata (title, site link, image) — used right after adding a feed
 export const refreshFeed = action({
   args: { feedId: v.id("brFeeds") },
   returns: v.null(),
@@ -109,22 +95,10 @@ export const refreshFeed = action({
     if (!feed) return null;
 
     try {
-      const response = await fetch(feed.xmlUrl, {
-        headers: { "User-Agent": "BenReader/1.0" },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!response.ok) return null;
-
-      const xml = await response.text();
-      const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
-      const parsed = parser.parse(xml);
-      const channel = parsed.rss?.channel || parsed.feed;
-      if (!channel) return null;
-
-      const feedImage = channel.image?.url || channel["itunes:image"]?.["@_href"] || channel.logo || channel.icon;
-      if (feedImage && !feed.imageUrl) {
-        await ctx.runMutation(api.feeds.updateImage, { feedId: args.feedId, imageUrl: String(feedImage) });
-      }
+      const result = await fetchAndParse(feed.xmlUrl);
+      if (!result) return null;
+      const meta = buildMetaPatch(feed, result.channel);
+      if (meta) await ctx.runMutation(api.feeds.updateMeta, { feedId: args.feedId, ...meta });
     } catch (e) {
       console.error(`Failed to refresh feed ${feed.title}:`, e);
     }
@@ -133,21 +107,65 @@ export const refreshFeed = action({
   },
 });
 
-// ─── RSS Parsing (shared logic) ───
+/* ─── Channel metadata ─── */
 
-async function parseFeedXml(xmlUrl: string) {
+function textOf(node: unknown): string | undefined {
+  if (typeof node === "string" && node) return node;
+  if (node && typeof node === "object" && "#text" in (node as Record<string, unknown>)) {
+    const t = (node as Record<string, unknown>)["#text"];
+    if (t) return String(t);
+  }
+  return undefined;
+}
+
+function channelLink(channel: any): string | undefined {
+  const link = channel.link;
+  if (Array.isArray(link)) {
+    const alt = link.find((l: any) => l["@_rel"] === "alternate") || link.find((l: any) => l["@_href"]);
+    return alt?.["@_href"];
+  }
+  if (typeof link === "string" && link.startsWith("http")) return link;
+  return link?.["@_href"];
+}
+
+// Only fills in metadata that's missing or was never resolved (title === xmlUrl)
+function buildMetaPatch(
+  feed: { title: string; xmlUrl: string; htmlUrl: string; imageUrl?: string },
+  channel: any
+): { title?: string; htmlUrl?: string; imageUrl?: string } | null {
+  const patch: { title?: string; htmlUrl?: string; imageUrl?: string } = {};
+
+  if (feed.title === feed.xmlUrl) {
+    const title = textOf(channel.title);
+    if (title) patch.title = title;
+  }
+  if (!feed.htmlUrl || feed.htmlUrl === feed.xmlUrl) {
+    const htmlUrl = channelLink(channel);
+    if (htmlUrl && htmlUrl !== feed.htmlUrl) patch.htmlUrl = htmlUrl;
+  }
+  if (!feed.imageUrl) {
+    const image = channel.image?.url || channel["itunes:image"]?.["@_href"] || channel.logo || channel.icon;
+    if (image) patch.imageUrl = String(textOf(image) ?? image);
+  }
+
+  return Object.keys(patch).length ? patch : null;
+}
+
+/* ─── RSS Parsing ─── */
+
+async function fetchAndParse(xmlUrl: string) {
   const response = await fetch(xmlUrl, {
     headers: { "User-Agent": "BenReader/1.0" },
     signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok) return [];
+  if (!response.ok) return null;
 
   const xml = await response.text();
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
   const parsed = parser.parse(xml);
 
   const channel = parsed.rss?.channel || parsed.feed;
-  if (!channel) return [];
+  if (!channel) return null;
 
   let items = channel.item || channel.entry || [];
   if (!Array.isArray(items)) items = [items];
@@ -179,7 +197,7 @@ async function parseFeedXml(xmlUrl: string) {
     const content = contentText.slice(0, 300);
     const rssContent = rawContentStr.length > 100 ? rawContentStr : undefined;
 
-    let imageUrl = item["media:content"]?.["@_url"] || item["media:thumbnail"]?.["@_url"] || item.enclosure?.["@_url"] || undefined;
+    const imageUrl = item["media:content"]?.["@_url"] || item["media:thumbnail"]?.["@_url"] || item.enclosure?.["@_url"] || undefined;
 
     let author: string | undefined;
     const rawAuthor = item.author || item["dc:creator"];
@@ -209,7 +227,7 @@ async function parseFeedXml(xmlUrl: string) {
     });
   }
 
-  return posts;
+  return { channel, posts };
 }
 
 function detectPaywall(contentHtml: string, item: any, isSubstack: boolean): boolean {
