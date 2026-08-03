@@ -191,6 +191,28 @@ function applyTheme(bgHex: string) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bgHex);
 }
 
+/* ──────────────────── Feed API (Vercel routes) ──────────────────── */
+
+type FeedMeta = { title?: string; htmlUrl?: string; imageUrl?: string };
+
+async function fetchFeedApi(xmlUrl: string): Promise<{ meta: FeedMeta; posts: RssPost[] }> {
+  const res = await fetch(`/api/feed?url=${encodeURIComponent(xmlUrl)}`);
+  if (!res.ok) throw new Error(`feed fetch failed: ${res.status}`);
+  return res.json();
+}
+
+// Fill in feed metadata that's missing or was never resolved (title === xmlUrl)
+function buildMetaPatch(
+  feed: { title: string; xmlUrl: string; htmlUrl: string; imageUrl?: string },
+  meta: FeedMeta
+): FeedMeta | null {
+  const patch: FeedMeta = {};
+  if (feed.title === feed.xmlUrl && meta.title) patch.title = meta.title;
+  if ((!feed.htmlUrl || feed.htmlUrl === feed.xmlUrl) && meta.htmlUrl && meta.htmlUrl !== feed.htmlUrl) patch.htmlUrl = meta.htmlUrl;
+  if (!feed.imageUrl && meta.imageUrl) patch.imageUrl = meta.imageUrl;
+  return Object.keys(patch).length ? patch : null;
+}
+
 /* ──────────────────── RSS Cache ──────────────────── */
 
 // Client-side cache for fetched RSS posts per feed
@@ -283,7 +305,7 @@ function pathToFilter(path: string): Filter | null {
 /* ──────────────────── useFeedPosts hook ──────────────────── */
 
 function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: string; htmlUrl: string; folderId: Id<"brFolders">; imageUrl?: string; brandColor?: string }> | undefined, filter: Filter) {
-  const fetchFeed = useAction(api.feedActions.fetchFeed);
+  const updateMeta = useMutation(api.feeds.updateMeta);
   const postStates = useQuery(api.posts.listStates, {});
   const starredSnapshots = useQuery(api.posts.listStarredSnapshots, filter.type === "starred" ? {} : "skip");
   const saveSnapshot = useMutation(api.posts.saveSnapshot);
@@ -347,7 +369,9 @@ function useFeedPosts(feeds: Array<{ _id: Id<"brFeeds">; title: string; xmlUrl: 
           return;
         }
         try {
-          const posts = await fetchFeed({ feedId: feed._id });
+          const { meta, posts } = await fetchFeedApi(feed.xmlUrl);
+          const patch = buildMetaPatch(feed, meta);
+          if (patch) updateMeta({ feedId: feed._id, ...patch });
           const entry = { posts, fetchedAt: Date.now() };
           feedCache.set(feed._id, entry);
           idbWrite(feed._id, entry);
@@ -855,7 +879,6 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
 /* ──────────────────── Article Reader ──────────────────── */
 
 function ArticleReader({ post, onClose, panelRef }: { post: ReaderPost; onClose: () => void; panelRef: React.RefObject<HTMLDivElement | null> }) {
-  const fetchArticle = useAction(api.articles.fetch);
   const toggleStar = useMutation(api.posts.toggleStar);
   const [article, setArticle] = useState<{
     title: string;
@@ -949,7 +972,8 @@ function ArticleReader({ post, onClose, panelRef }: { post: ReaderPost; onClose:
       return;
     }
 
-    fetchArticle({ url: post.url })
+    fetch(`/api/article?url=${encodeURIComponent(post.url)}`)
+      .then((res) => (res.ok ? res.json() : null))
       .then((r) => {
         if (cancelled) return;
         if (r) setArticle({ title: r.title, content: r.content, siteName: r.siteName ?? undefined, length: r.length });
@@ -959,7 +983,7 @@ function ArticleReader({ post, onClose, panelRef }: { post: ReaderPost; onClose:
       .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [post.url, post.hasRssContent, post.guid, post.rssContent, fetchArticle]);
+  }, [post.url, post.hasRssContent, post.guid, post.rssContent]);
 
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [article]);
 
@@ -1203,13 +1227,17 @@ function AddFeedModal({ onClose }: { onClose: () => void }) {
   const [folderId, setFolderId] = useState<Id<"brFolders"> | "">("");
   const folders = useQuery(api.folders.list, {});
   const addFeed = useMutation(api.feeds.add);
-  const refreshFeed = useAction(api.feedActions.refreshFeed);
+  const updateMeta = useMutation(api.feeds.updateMeta);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url || !folderId) return;
     const feedId = await addFeed({ title: url, xmlUrl: url, htmlUrl: url, folderId: folderId as Id<"brFolders"> });
-    try { await refreshFeed({ feedId }); } catch {}
+    try {
+      const { meta } = await fetchFeedApi(url);
+      const patch = buildMetaPatch({ title: url, xmlUrl: url, htmlUrl: url }, meta);
+      if (patch) await updateMeta({ feedId, ...patch });
+    } catch {}
     onClose();
   };
 
