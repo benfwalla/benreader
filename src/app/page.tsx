@@ -605,9 +605,8 @@ function PostListWithHeader({ filter, feeds, onOpenPost, onFilterFeed, onMenuCli
           <List size={24} />
         </button>
         <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ fontFamily: "var(--font-serif)" }}>{title}</h2>
-        <button onClick={handleRefresh} disabled={refreshing} className={`btn-accent ${refreshing ? "animate-pulse" : ""}`}>
-          <ArrowsClockwise size={14} className={refreshing ? "animate-spin" : ""} style={{ display: "inline", marginRight: 4 }} />
-          {refreshing ? "Refreshing…" : "Refresh"}
+        <button onClick={handleRefresh} disabled={refreshing} className="btn-accent" style={{ padding: 8, display: "flex" }} title="Refresh">
+          <ArrowsClockwise size={16} className={refreshing ? "animate-spin" : ""} />
         </button>
       </header>
 
